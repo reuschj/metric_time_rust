@@ -1,0 +1,13 @@
+[package]
+name = "metric_time"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.38"
+futures = "0.3.31"
+num = "0.4.3"
+rand = "0.8.5"
+ryu = "1.0.18"
+tokio = { version = "1.41.1", features = ["full"] }
+tokio-stream = "0.1.16"
