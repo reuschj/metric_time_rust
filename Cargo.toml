@@ -1,0 +1,41 @@
+[package]
+name = "metric_time"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust library for working with metric (decimal) time format"
+repository = "https://github.com/yourusername/metric_time"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chrono = { version = "0.4.38", features = ["wasmbind"] }
+futures = "0.3.31"
+num = "0.4.3"
+rand = { version = "0.8.5", features = ["getrandom", "std", "std_rng"] }
+ryu = "1.0.18"
+wasm-bindgen-futures = "0.4.37"
+getrandom = { version = "0.2.10", features = ["js"] }
+web-time = "1.1.0"
+gloo-timers = { version = "0.3.0", features = ["futures"] }
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3.77", features = ["Window"] }
+wasm-bindgen-test = "0.3.50"
+
+[features]
+default = ["console_error_panic_hook"]
+console_error_panic_hook = ["dep:console_error_panic_hook"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.41.1", features = ["full"] }
+tokio-stream = "0.1.16"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = { version = "0.1.7", optional = true }
+tokio = { version = "1.41.1", features = ["sync", "macros"] }
+tokio-stream = { version = "0.1.16", features = ["sync"] }
+
+[profile.release]
+opt-level = "s"
+debug = false
