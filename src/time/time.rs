@@ -42,10 +42,9 @@
 use chrono::{Local, NaiveTime, Timelike};
 use std::fmt::{Display, Error, Formatter};
 
-use crate::time_helpers;
-use crate::time_lib::{
-    Period, TimeBounds, TimeComponents, TimeConversionTrait, TimeKind, TimeRangeError,
-    TimeRotationComponents,
+use crate::{
+    time::conversion_utils, Period, TimeBounds, TimeComponents, TimeConversionTrait, TimeKind,
+    TimeRangeError, TimeRotationComponents,
 };
 
 // ⏰ Time --------------------------------------------------------------------------- /
@@ -298,42 +297,35 @@ impl TimeConversionTrait for Time {
             TimeKind::Base10 => match kind {
                 TimeKind::Base10 => self.clone(),
                 TimeKind::Base12(_) => {
-                    let components_24 =
-                        time_helpers::conversion_utils::base10_to_base24(&self.components);
-                    let (components, period) =
-                        time_helpers::conversion_utils::base24_to_base12(&components_24);
+                    let components_24 = conversion_utils::base10_to_base24(&self.components);
+                    let (components, period) = conversion_utils::base24_to_base12(&components_24);
                     Time::base12(components, period).unwrap()
                 }
                 TimeKind::Base24 => {
-                    let components =
-                        time_helpers::conversion_utils::base10_to_base24(&self.components);
+                    let components = conversion_utils::base10_to_base24(&self.components);
                     Time::base24(components).unwrap()
                 }
             },
             TimeKind::Base12(period) => match kind {
                 TimeKind::Base10 => {
                     let components_24 =
-                        time_helpers::conversion_utils::base12_to_base24(&self.components, &period);
-                    let components =
-                        time_helpers::conversion_utils::base24_to_base10(&components_24);
+                        conversion_utils::base12_to_base24(&self.components, &period);
+                    let components = conversion_utils::base24_to_base10(&components_24);
                     Time::base10(components).unwrap()
                 }
                 TimeKind::Base12(_) => self.clone(),
                 TimeKind::Base24 => {
-                    let components =
-                        time_helpers::conversion_utils::base12_to_base24(&self.components, &period);
+                    let components = conversion_utils::base12_to_base24(&self.components, &period);
                     Time::base24(components).unwrap()
                 }
             },
             TimeKind::Base24 => match kind {
                 TimeKind::Base10 => {
-                    let components =
-                        time_helpers::conversion_utils::base24_to_base10(&self.components);
+                    let components = conversion_utils::base24_to_base10(&self.components);
                     Time::base10(components).unwrap()
                 }
                 TimeKind::Base12(_) => {
-                    let (components, period) =
-                        time_helpers::conversion_utils::base24_to_base12(&self.components);
+                    let (components, period) = conversion_utils::base24_to_base12(&self.components);
                     Time::base12(components, period).unwrap()
                 }
                 TimeKind::Base24 => self.clone(),
@@ -361,10 +353,7 @@ Unit tests for Time implementation
 mod tests {
     use chrono::NaiveTime;
 
-    use crate::{
-        time::Time,
-        time_lib::{TimeComponents, TimeConversionTrait, TimeKind},
-    };
+    use crate::{Time, TimeComponents, TimeConversionTrait, TimeKind};
 
     #[test]
     fn it_creates_a_new_time_and_converts_to_metric() {

@@ -26,9 +26,8 @@
 //! assert_eq!(metric_time.min_per_hour(), 100);
 //! ```
 
-use std::fmt::{Display, Error, Formatter};
-
 use num::{Num, ToPrimitive};
+use std::fmt::{Display, Error, Formatter};
 
 use crate::constants::{METRIC_CONVERSION_RATE, NS_PER_MS, NS_PER_SEC};
 
@@ -239,10 +238,7 @@ Tests for time conversion functionality
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        constants::METRIC_CONVERSION_RATE,
-        time_helpers::time_conversions::{Converter, TimeConversions},
-    };
+    use crate::{constants::METRIC_CONVERSION_RATE, Converter, TimeConversions};
 
     #[test]
     fn can_get_rate_from_converter() {

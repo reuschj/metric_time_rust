@@ -29,20 +29,15 @@ use std::{
 };
 
 use crate::{
-    clock_lib::{ClockError, ClockSettings},
-    time::Time,
-    time_emitter_lib::{Context, TimeEmitterSettingsTrait, TimeEmitterTrait},
-    time_lib::TimeKind,
+    ClockError, ClockSettings, Emittable, EmitterContext, EmitterSettingsTrait, Time, TimeKind,
 };
 
 // Use the appropriate time emitter based on environment
-#[cfg(not(target_arch = "wasm32"))]
-use crate::time_emitter_standard::{Settings as TimeEmitterSettings, TimeEmitter};
+#[cfg(not(feature = "web"))]
+use super::super::emitters::std_emitter::{Emitter, Settings as EmitterSettings};
 
-#[cfg(target_arch = "wasm32")]
-use crate::time_emitter_wasm::{
-    self as time_emitter_standard, Settings as TimeEmitterSettings, TimeEmitter,
-};
+#[cfg(feature = "web")]
+use super::super::emitters::web_emitter::{Settings as EmitterSettings, WebEmitter as Emitter};
 
 // 🕰️ Clock --------------------------------------------------------------------------- /
 
@@ -67,7 +62,7 @@ use crate::time_emitter_wasm::{
 #[derive(Debug, Clone)]
 pub struct Clock {
     /// 📡 Reference to the time emitter
-    emitter_ref: Arc<Mutex<Option<TimeEmitter>>>,
+    emitter_ref: Arc<Mutex<Option<Emitter>>>,
     /// ⏰ The most recently emitted time
     time_ref: Arc<Mutex<Option<Time>>>,
     /// 🔢 Counter for tracking the number of time events
@@ -306,7 +301,7 @@ impl Clock {
     /// static lifetime, as it will be executed on a background thread.
     pub fn start<F>(&self, on_emit: F) -> Result<(), ClockError>
     where
-        F: Fn(Time, Context<TimeEmitterSettings>) -> () + Clone + Send + Sync + 'static,
+        F: Fn(Time, EmitterContext<EmitterSettings>) -> () + Clone + Send + Sync + 'static,
     {
         let time_ref = Arc::clone(&self.time_ref);
         let counter_ref = Arc::clone(&self.counter_ref);
@@ -314,30 +309,30 @@ impl Clock {
         match self.emitter_ref.lock() {
             Ok(mut emitter) => {
                 // Create the handler for time events
-                let on_emit_handler = move |time: Time, context: Context<TimeEmitterSettings>| {
-                    on_emit(time.clone(), context);
-                    match time_ref.lock() {
-                        Ok(mut current_time) => {
-                            *current_time = Some(time);
-                            match counter_ref.lock() {
-                                Ok(mut counter) => {
-                                    *counter += 1;
+                let on_emit_handler =
+                    move |time: Time, context: EmitterContext<EmitterSettings>| {
+                        on_emit(time.clone(), context);
+                        match time_ref.lock() {
+                            Ok(mut current_time) => {
+                                *current_time = Some(time);
+                                match counter_ref.lock() {
+                                    Ok(mut counter) => {
+                                        *counter += 1;
+                                    }
+                                    Err(_) => (),
                                 }
-                                Err(_) => (),
                             }
-                        }
-                        Err(_) => (),
+                            Err(_) => (),
+                        };
                     };
-                };
 
                 // Create settings
-                let settings = <TimeEmitterSettings as TimeEmitterSettingsTrait>::new()
+                let settings = <EmitterSettings as EmitterSettingsTrait>::new()
                     .set_kind(self.settings.kind)
                     .set_interval(self.settings.interval);
 
                 // Create the emitter
-                let new_emitter =
-                    <TimeEmitter as TimeEmitterTrait>::start(settings, on_emit_handler);
+                let new_emitter = <Emitter as Emittable>::start(settings, on_emit_handler);
 
                 *emitter = Some(new_emitter);
                 Ok(())
@@ -386,10 +381,10 @@ impl Clock {
             Ok(mut time_emitter) => match &mut *time_emitter {
                 Some(emitter) => {
                     // First stop the emitter
-                    match <TimeEmitter as TimeEmitterTrait>::stop(emitter) {
+                    match <Emitter as Emittable>::stop(emitter) {
                         Ok(_) => {
                             // Then wait for completion
-                            let _ = <TimeEmitter as TimeEmitterTrait>::await_completion(emitter);
+                            let _ = <Emitter as Emittable>::await_completion(emitter);
                             let time = self.time().unwrap_or(Time::now());
                             Ok(time)
                         }
@@ -406,11 +401,11 @@ impl Clock {
 // 🧪 Tests --------------------------------------------------------------------------- /
 // 🧪 Unit tests for the Clock implementation
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "web")))]
 mod tests {
     use std::sync::mpsc;
 
-    use crate::time_lib::Period;
+    use crate::Period;
 
     #[test]
     fn test_clock_new_with_defaults() {

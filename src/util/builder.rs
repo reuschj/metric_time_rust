@@ -23,6 +23,7 @@
 //!
 
 use num::{Float, Num};
+#[cfg(feature = "web")]
 use rand::{
     distributions::{
         uniform::{SampleRange, SampleUniform},
@@ -62,7 +63,7 @@ use std::fmt::{Display, Error, Formatter};
 /// Operations can also be chained with other builders:
 ///
 /// ```
-/// use metric_time::{Builder, TimeEmitterTrait};
+/// use metric_time::Builder;
 ///
 /// let builder1 = Builder::new(10.0);
 /// let builder2 = Builder::new(5.0);
@@ -353,10 +354,8 @@ impl<T: Num + Copy> Builder<T> {
     }
 }
 
-impl<T: Num + Copy> Builder<T>
-where
-    Standard: Distribution<T>,
-{
+#[cfg(feature = "web")]
+impl<T: Num + Copy> Builder<T> {
     /// 🎲 Generates a new random value using the standard distribution.
     ///
     /// # 📝 Example
@@ -374,6 +373,7 @@ where
     }
 }
 
+#[cfg(feature = "web")]
 impl<T: Num + Copy + SampleUniform> Builder<T> {
     /// 🎯 Generates a random value within a given range.
     ///

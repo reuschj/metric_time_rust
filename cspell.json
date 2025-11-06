@@ -1,0 +1,16 @@
+{
+  "words": [
+    "gloo",
+    "Timelike",
+    "chrono",
+    "wasmbind",
+    "cdylib",
+    "rlib",
+    "bindgen",
+    "getrandom",
+    "libc"
+  ],
+  "userWords": [
+    "emittable"
+  ]
+}

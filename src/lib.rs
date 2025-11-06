@@ -17,51 +17,60 @@
 //!
 //! - 🕒 `Clock` - Core clock functionality
 //! - ⏰ `Time` - Time representation and manipulation
-//! - 📡 `TimeEmitter` - Time event emission
+//! - 📡 `Emitter` - Time event emission (not for web applications)
+//! - 📡 `WebEmitter` - Time event emission (for web applications)
 //! - 🛠️ `Builder` - Clock configuration
 //! - 📋 `Period`, `TimeBounds`, `TimeComponents` - Time utilities
 //!
 //! The library handles all conversions and formatting internally while providing
 //! a clean API for working with metric time measurements and displays.
-//!
-//! ## 🌐 WebAssembly Support
-//!
-//! When compiled with the `wasm32` target, this library exposes WASM bindings
-//! for using metric time functionality in web applications.
 
 // 📤 Public exports -------------------------------------------------------------------------------- /
 
-pub use clock::Clock;
-pub use clock_lib::{ClockError, ClockSettings};
-pub use time::Time;
-pub use time_emitter_lib::{Context, TimeEmitterTrait};
-#[cfg(not(target_arch = "wasm32"))]
-pub use time_emitter_standard::{Settings, Subscription, TimeEmitter};
-#[cfg(target_arch = "wasm32")]
-pub use time_emitter_wasm::{Settings, Subscription, TimeEmitter};
-pub use time_helpers::time_conversions::{Converter, TimeConversions};
-pub use time_lib::{
+// Clock
+pub use clock::clock::Clock;
+pub use clock::lib::{ClockError, ClockSettings};
+
+// Emitters
+pub use emitters::lib::{Emittable, EmitterContext, EmitterSettingsTrait};
+#[cfg(not(feature = "web"))]
+pub use emitters::std_emitter::{
+    Emitter, Settings as EmitterSettings, Subscription as EmitterSubscription,
+};
+#[cfg(feature = "web")]
+pub use emitters::web_emitter::{Settings as WebEmitterSettings, WebEmitter};
+
+// Time
+pub use time::lib::{
     Period, TimeBounds, TimeComponents, TimeConversionTrait, TimeKind, TimeRangeError,
     TimeRotationComponents,
 };
+pub use time::time::Time;
+pub use time::time_conversions::{Converter, TimeConversions};
+
+// Utils
 pub use util::builder::Builder;
 
 // 📦 Modules --------------------------------------------------------------------------------------- /
 
-mod time_helpers {
+mod clock {
+    pub mod clock;
+    pub mod lib;
+}
+mod emitters {
+    pub mod lib;
+    #[cfg(feature = "standard")]
+    pub mod std_emitter;
+    #[cfg(feature = "web")]
+    pub mod web_emitter;
+}
+mod time {
     pub mod conversion_utils;
+    pub mod lib;
+    pub mod time;
     pub mod time_conversions;
 }
 mod util {
     pub mod builder;
 }
-mod clock;
-mod clock_lib;
 mod constants;
-mod time;
-mod time_emitter_lib;
-#[cfg(not(target_arch = "wasm32"))]
-mod time_emitter_standard;
-#[cfg(target_arch = "wasm32")]
-mod time_emitter_wasm;
-mod time_lib;

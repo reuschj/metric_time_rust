@@ -10,8 +10,8 @@
 //!
 //! # 🧩 Key Components
 //!
-//! - [`TimeEmitterSettingsTrait`] - ⚙️ A trait for configuring time emitters
-//! - [`TimeEmitterTrait`] - 🧩 Core functionality that all time emitters must implement
+//! - [`EmitterSettingsTrait`] - ⚙️ A trait for configuring time emitters
+//! - [`Emittable`] - 🧩 Core functionality that all time emitters must implement
 //! - [`Context`] - 📦 Context information provided with each time event
 //!
 //! # 🌐 Cross-platform Support
@@ -21,8 +21,7 @@
 
 use std::fmt::Debug;
 
-use crate::time::Time;
-use crate::time_lib::TimeKind;
+use crate::{Time, TimeKind};
 
 /// ⚙️ Time emitter settings trait ---------------------------------------------------------------- /
 
@@ -32,7 +31,7 @@ use crate::time_lib::TimeKind;
 /// different platforms. It allows for different duration types to be used,
 /// depending on the platform (e.g., `std::time::Duration` for native and
 /// `web_time::Duration` for WebAssembly).
-pub trait TimeEmitterSettingsTrait: Debug + Clone + Copy + Default {
+pub trait EmitterSettingsTrait: Debug + Clone + Copy + Default {
     /// ⏱️ The duration type used by this settings implementation.
     type Duration: Debug + Copy + Clone;
 
@@ -91,7 +90,7 @@ pub trait TimeEmitterSettingsTrait: Debug + Clone + Copy + Default {
 /// This structure contains metadata about the emitted time event,
 /// including its sequential index and the settings used for the emitter.
 #[derive(Debug, Clone, Copy)]
-pub struct Context<S: TimeEmitterSettingsTrait> {
+pub struct EmitterContext<S: EmitterSettingsTrait> {
     /// 🔢 The sequential index of the event (0-based).
     pub index: u64,
     /// ⚙️ The settings used for the emitter.
@@ -105,28 +104,19 @@ pub struct Context<S: TimeEmitterSettingsTrait> {
 /// This trait provides a common interface for time emitters across different platforms.
 /// Implementations of this trait are responsible for periodically emitting time events
 /// based on the provided settings and invoking the callback function for each event.
-pub trait TimeEmitterTrait: Debug + Clone + Send + Sync {
+pub trait Emittable: Debug + Clone {
     /// ⚙️ The settings type used by this emitter.
-    type Settings: TimeEmitterSettingsTrait;
+    type Settings: EmitterSettingsTrait;
+
+    type OnStopValue;
 
     /// ❌ The error type returned by this emitter's operations.
-    type Error: std::error::Error;
+    type ErrorType: std::error::Error;
 
-    /// 🚀 Starts a new time emitter with the given settings and callback.
-    ///
-    /// The callback will be called for each time event with the current time and context.
-    ///
-    /// # 📥 Parameters
-    ///
-    /// * `settings` - ⚙️ Configuration for the time emitter, including interval and max events
-    /// * `on_emit` - 🔔 Callback function that will be invoked for each time event
-    ///
-    /// # 📤 Returns
-    ///
-    /// A new instance of the time emitter
     fn start<F>(settings: Self::Settings, on_emit: F) -> Self
     where
-        F: 'static + Fn(Time, Context<Self::Settings>) -> () + Clone + Send + Sync;
+        Self: Sized,
+        F: FnMut(Time, EmitterContext<Self::Settings>) -> () + Send + Sync + 'static;
 
     /// ⚙️ Gets a reference to the settings of the time emitter.
     fn settings(&self) -> &Self::Settings;
@@ -142,7 +132,7 @@ pub trait TimeEmitterTrait: Debug + Clone + Send + Sync {
     ///
     /// This method halts the emission of time events. The exact behavior depends on the
     /// implementation (e.g., stopping a thread, clearing an interval).
-    fn stop(&self) -> Result<(), Self::Error>;
+    fn stop(&mut self) -> Result<Self::OnStopValue, Self::ErrorType>;
 
     /// ⏳ Waits for the time emitter to complete.
     ///
@@ -156,19 +146,8 @@ pub trait TimeEmitterTrait: Debug + Clone + Send + Sync {
     ///
     /// A Result indicating success or failure of the waiting operation.
     /// The default implementation simply returns Ok(()).
-    fn await_completion(&mut self) -> Result<(), Self::Error> {
-        // Default implementation does nothing
-        Ok(())
-    }
+    fn await_completion(&mut self) -> Result<Self::OnStopValue, Self::ErrorType>;
 }
-
-// 📝 Type aliases ----------------------------------------------------------------------------- /
-
-/// 🔔 A convenience type alias for callbacks used by time emitters.
-///
-/// This type represents a function that takes a Time and Context and produces no return value.
-/// The function must be thread-safe (Send + Sync) to support both standard and WASM environments.
-pub type TimeEmitterCallback<S> = dyn Fn(Time, Context<S>) -> () + Send + Sync;
 
 // 🧪 Tests -------------------------------------------------------------------------------- /
 
@@ -185,7 +164,7 @@ mod tests {
         kind: TimeKind,
     }
 
-    impl TimeEmitterSettingsTrait for TestSettings {
+    impl EmitterSettingsTrait for TestSettings {
         type Duration = Duration;
 
         fn max_events(&self) -> Option<u64> {

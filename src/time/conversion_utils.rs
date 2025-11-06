@@ -8,7 +8,7 @@
 //!
 //! It also includes utilities for calculating nanoseconds since midnight for different time kinds.
 
-use crate::time_lib::{Period, TimeComponents, TimeKind};
+use crate::{Period, TimeComponents, TimeKind};
 
 use super::time_conversions::{Converter, TimeConversions};
 
@@ -303,8 +303,8 @@ mod tests {
     // 🧪 Standard time conversion tests
     mod std_conversions {
         use crate::{
-            time_helpers::conversion_utils::{base12_to_base24, base24_to_base12},
-            time_lib::{Period, TimeComponents},
+            time::conversion_utils::{base12_to_base24, base24_to_base12},
+            Period, TimeComponents,
         };
 
         fn test_base12_to_base24_conversion(
@@ -402,8 +402,7 @@ mod tests {
     // 🧪 Nanosecond calculation tests
     mod calc_ns_since_midnight_util {
         use crate::{
-            time_helpers::conversion_utils::calc_ns_since_midnight,
-            time_lib::{Period, TimeComponents, TimeKind},
+            time::conversion_utils::calc_ns_since_midnight, Period, TimeComponents, TimeKind,
         };
 
         fn test_calc_ns_since_midnight(
@@ -464,8 +463,8 @@ mod tests {
     // 🧪 Metric time conversion tests
     mod metric_conversions {
         use crate::{
-            time_helpers::conversion_utils::{base10_to_base24, base24_to_base10},
-            time_lib::TimeComponents,
+            time::conversion_utils::{base10_to_base24, base24_to_base10},
+            TimeComponents,
         };
 
         fn test_base24_to_base10_conversion(input: TimeComponents, expected: TimeComponents) {

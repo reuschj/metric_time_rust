@@ -27,8 +27,8 @@
 use std::fmt::{Display, Error, Formatter};
 use std::ops::Range;
 
+use super::time_conversions::TimeConversions;
 use crate::constants::{FULL_CIRCLE_DEGREES, NS_PER_SEC};
-use crate::time_helpers::time_conversions::TimeConversions;
 
 // 🕰️ Period --------------------------------------------------------------------------- /
 
@@ -468,8 +468,8 @@ pub trait TimeConversionTrait {
 #[cfg(test)]
 mod tests {
     use crate::{
-        constants::NS_PER_SEC,
-        time_lib::{TimeBounds, TimeComponents, TimeKind, TimeRangeError, TimeRotationComponents},
+        constants::NS_PER_SEC, TimeBounds, TimeComponents, TimeKind, TimeRangeError,
+        TimeRotationComponents,
     };
 
     use super::Period;

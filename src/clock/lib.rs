@@ -20,7 +20,7 @@
 
 use std::{error::Error, fmt::Display, time::Duration};
 
-use crate::time_lib::TimeKind;
+use crate::TimeKind;
 
 // ⚙️ ClockSetup ----------------------------------------------------------------------- /
 
