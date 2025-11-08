@@ -30,7 +30,7 @@ web-sys = { version = "0.3.77", features = ["Window", "console"], optional = tru
 wasm-bindgen-test = "0.3.50"
 
 [features]
-standard = [
+default = [
     "dep:chrono",
     "chrono/clock",
     "dep:console_error_panic_hook",
@@ -68,7 +68,6 @@ web = [
     "web-sys/Window",
     "web-sys/console",
 ]
-default = ["standard"]
 
 [profile.release]
 opt-level = "s"

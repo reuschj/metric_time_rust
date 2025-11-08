@@ -20,29 +20,32 @@
 //!     println!("Current time: {}", time);
 //! }).expect("Failed to start clock");
 //!
-//! // The clock will continue emitting time events until stopped
+//! // In a real application, you would need to manage the clock's lifecycle,
+//! // for example, by stopping it when it's no longer needed.
+//! // clock.stop().expect("Failed to stop clock");
 //! ```
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-
-use crate::{
-    ClockError, ClockSettings, EmitterContext, EmitterSettingsTrait, Stoppable, Time, TimeKind,
-};
-
-// Use the appropriate time emitter based on environment
+use std::sync::{Arc, Mutex};
 
 #[cfg(not(feature = "web"))]
-use super::super::emitters::lib::Startable;
-#[cfg(not(feature = "web"))]
-use super::super::emitters::std_emitter::{Emitter, Settings as EmitterSettings};
+use std::time::Duration;
 
 #[cfg(feature = "web")]
-use super::super::emitters::lib::WebStartable;
+use web_time::Duration;
+
+use crate::{ClockError, ClockSettings, EmitterContext, EmitterSettingsTrait, Time, TimeKind};
+
+// Use the appropriate emitter traits based on environment
+#[cfg(not(feature = "web"))]
+use crate::{ThreadStartable, ThreadStoppable};
 #[cfg(feature = "web")]
-use super::super::emitters::web_emitter::{Settings as EmitterSettings, WebEmitter as Emitter};
+use crate::{WebStartable, WebStoppable};
+
+// Use the appropriate emitter based on environment
+#[cfg(not(feature = "web"))]
+use super::super::emitters::{thread_emitter, thread_emitter::ThreadEmitter};
+#[cfg(feature = "web")]
+use super::super::emitters::{web_emitter, web_emitter::WebEmitter};
 
 // 🕰️ Clock --------------------------------------------------------------------------- /
 
@@ -67,7 +70,11 @@ use super::super::emitters::web_emitter::{Settings as EmitterSettings, WebEmitte
 #[derive(Debug, Clone)]
 pub struct Clock {
     /// 📡 Reference to the time emitter
-    emitter_ref: Arc<Mutex<Option<Emitter>>>,
+    #[cfg(feature = "web")]
+    emitter_ref: Arc<Mutex<Option<WebEmitter>>>,
+    /// 📡 Reference to the time emitter
+    #[cfg(not(feature = "web"))]
+    emitter_ref: Arc<Mutex<Option<ThreadEmitter>>>,
     /// ⏰ The most recently emitted time
     time_ref: Arc<Mutex<Option<Time>>>,
     /// 🔢 Counter for tracking the number of time events
@@ -269,7 +276,10 @@ impl Clock {
             Err(_) => 0 as u128,
         }
     }
+}
 
+#[cfg(not(feature = "web"))]
+impl Clock {
     /// ▶️ Starts the clock, emitting time events at the configured interval.
     ///
     /// This method initializes a time emitter that will periodically emit time events.
@@ -298,6 +308,8 @@ impl Clock {
     ///     println!("Time: {}", time);
     /// });
     /// assert!(result.is_ok());
+    /// // Remember to stop the clock when done.
+    /// clock.stop();
     /// ```
     ///
     /// # 🔒 Thread Safety
@@ -306,57 +318,81 @@ impl Clock {
     /// static lifetime, as it will be executed on a background thread.
     pub fn start<F>(&self, on_emit: F) -> Result<(), ClockError>
     where
-        F: Fn(Time, EmitterContext<EmitterSettings>) -> () + Clone + Send + Sync + 'static,
+        F: FnMut(Time, EmitterContext<thread_emitter::Settings>) -> ()
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     {
+        let mut callback_fn = on_emit;
         let time_ref = Arc::clone(&self.time_ref);
         let counter_ref = Arc::clone(&self.counter_ref);
 
-        match self.emitter_ref.lock() {
-            Ok(mut emitter) => {
-                // Create the handler for time events
-                let on_emit_handler =
-                    move |time: Time, context: EmitterContext<EmitterSettings>| {
-                        on_emit(time.clone(), context);
-                        match time_ref.lock() {
-                            Ok(mut current_time) => {
-                                *current_time = Some(time);
-                                match counter_ref.lock() {
-                                    Ok(mut counter) => {
-                                        *counter += 1;
-                                    }
-                                    Err(_) => (),
-                                }
-                            }
-                            Err(_) => (),
-                        };
-                    };
+        self.set_emitter_thread(move |next_time, context| {
+            callback_fn(next_time.clone(), context);
+            Clock::update_time(&time_ref, &counter_ref, next_time).expect("Failed to update time");
+        })
+        .expect("Failed to set emitter.");
 
-                // Create settings
-                let settings = <EmitterSettings as EmitterSettingsTrait>::new()
-                    .set_kind(self.settings.kind)
-                    .set_interval(self.settings.interval);
-
-                // Create the emitter
-                #[cfg(not(feature = "web"))]
-                let new_emitter_result = <Emitter as Startable>::start(settings, on_emit_handler);
-
-                #[cfg(feature = "web")]
-                let new_emitter_result =
-                    <Emitter as WebStartable>::start(settings, on_emit_handler);
-
-                match new_emitter_result {
-                    Ok(new_emitter) => {
-                        *emitter = Some(new_emitter);
-                        Ok(())
-                    }
-                    Err(_) => Err(ClockError::CouldNotSetTimeEmitter),
-                }
-            }
-            Err(_) => Err(ClockError::CouldNotSetTimeEmitter),
-        }?;
         Ok(())
     }
+}
 
+#[cfg(feature = "web")]
+impl Clock {
+    /// ▶️ Starts the clock, emitting time events at the configured interval.
+    ///
+    /// This method initializes a time emitter that will periodically emit time events.
+    /// The provided callback function will be invoked for each time event. This version
+    /// is for WebAssembly (WASM) environments.
+    ///
+    /// # 📥 Parameters
+    ///
+    /// * `on_emit` - A callback function that will be called for each time event.
+    ///   The callback receives the current time and context information.
+    ///
+    /// # 🔄 Returns
+    ///
+    /// A `Result` indicating success or an error if the clock couldn't be started.
+    ///
+    /// # ❌ Errors
+    ///
+    /// Returns `ClockError::CouldNotSetTimeEmitter` if the clock's mutex couldn't be locked.
+    ///
+    /// # 📝 Examples
+    ///
+    /// ```
+    /// use metric_time::Clock;
+    ///
+    /// let clock = Clock::new();
+    /// let result = clock.start(|time, _| {
+    ///     // In a real app, you would update your UI here.
+    ///     println!("Time: {}", time);
+    /// });
+    /// assert!(result.is_ok());
+    /// // Remember to stop the clock when done.
+    /// clock.stop();
+    /// ```
+    pub fn start<F>(&self, on_emit: F) -> Result<(), ClockError>
+    where
+        F: FnMut(Time, EmitterContext<web_emitter::Settings>) -> () + 'static,
+    {
+        let mut callback_fn = on_emit;
+        let time_ref = Arc::clone(&self.time_ref);
+        let counter_ref = Arc::clone(&self.counter_ref);
+
+        self.set_emitter_web(move |next_time, context| {
+            callback_fn(next_time.clone(), context);
+            Clock::update_time(&time_ref, &counter_ref, next_time).expect("Failed to update time");
+        })
+        .expect("Failed to set emitter.");
+
+        Ok(())
+    }
+}
+
+#[cfg(not(feature = "web"))]
+impl Clock {
     /// ⏹️ Stops the clock and returns the current time.
     ///
     /// This method stops the time emitter, preventing any further time events
@@ -392,29 +428,145 @@ impl Clock {
     /// let current_time = clock.stop().expect("Failed to stop clock");
     /// ```
     pub fn stop(&self) -> Result<Time, ClockError> {
-        match self.emitter_ref.lock() {
-            Ok(mut time_emitter) => match &mut *time_emitter {
-                Some(emitter) => {
-                    // First stop the emitter
-                    match <Emitter as Stoppable>::stop(emitter) {
-                        Ok(_) => {
-                            // Then wait for completion
-                            let _ = <Emitter as Stoppable>::await_completion(emitter);
-                            let time = self.time().unwrap_or(Time::now());
-                            Ok(time)
-                        }
-                        Err(_) => Err(ClockError::CouldNotUnsubscribe),
-                    }
-                }
-                None => Err(ClockError::CouldNotUnsubscribe),
-            },
-            Err(_) => Err(ClockError::CouldNotUnsubscribe),
-        }
+        let mut guard = self
+            .emitter_ref
+            .lock()
+            .map_err(|_| ClockError::CouldNotUnsubscribe)?;
+
+        let emitter = match guard.as_mut() {
+            Some(emitter) => emitter,
+            None => {
+                return Err(ClockError::CouldNotUnsubscribe);
+            }
+        };
+
+        emitter
+            .stop()
+            .map_err(|_| ClockError::CouldNotUnsubscribe)?;
+        emitter
+            .await_completion()
+            .map_err(|_| ClockError::CouldNotUnsubscribe)?;
+
+        Ok(self.time().unwrap_or(Time::now()))
+    }
+}
+
+#[cfg(feature = "web")]
+impl Clock {
+    /// ⏹️ Stops the clock and returns the current time.
+    ///
+    /// This method stops the time emitter, preventing any further time events
+    /// from being emitted. Note that for web, this operation is non-blocking.
+    ///
+    /// # 🔄 Returns
+    ///
+    /// A `Result` containing the current time if successful, or an error if
+    /// the clock couldn't be stopped.
+    ///
+    /// # ❌ Errors
+    ///
+    /// Returns `ClockError::CouldNotUnsubscribe` if:
+    /// - The clock's mutex couldn't be locked
+    /// - No emitter was found (the clock wasn't started)
+    /// - The emitter couldn't be stopped
+    ///
+    /// # 📝 Examples
+    ///
+    /// ```
+    /// use metric_time::Clock;
+    ///
+    /// let clock = Clock::new();
+    /// clock.start(|_, _| {}).expect("Failed to start clock");
+    ///
+    /// // Stop the clock and get the current time
+    /// let current_time = clock.stop().expect("Failed to stop clock");
+    /// ```
+    pub fn stop(&self) -> Result<Time, ClockError> {
+        let mut guard = self
+            .emitter_ref
+            .lock()
+            .map_err(|_| ClockError::CouldNotUnsubscribe)?;
+
+        let emitter = match guard.as_mut() {
+            Some(emitter) => emitter,
+            None => {
+                return Err(ClockError::CouldNotUnsubscribe);
+            }
+        };
+
+        emitter
+            .stop()
+            .map_err(|_| ClockError::CouldNotUnsubscribe)?;
+
+        Ok(self.time().unwrap_or(Time::now()))
+    }
+}
+
+impl Clock {
+    fn update_time(
+        time_ref: &Arc<Mutex<Option<Time>>>,
+        counter_ref: &Arc<Mutex<u128>>,
+        next_time: Time,
+    ) -> Result<Time, ClockError> {
+        let mut time_guard = time_ref.lock().map_err(|_| ClockError::CouldNotSetTime)?;
+        let mut counter_guard = counter_ref
+            .lock()
+            .map_err(|_| ClockError::CouldNotSetTime)?;
+        *time_guard = Some(next_time);
+        *counter_guard += 1;
+        Ok(next_time)
+    }
+
+    #[cfg(not(feature = "web"))]
+    fn get_thread_settings(&self) -> thread_emitter::Settings {
+        thread_emitter::Settings::new()
+            .set_kind(self.settings.kind)
+            .set_interval(self.settings.interval)
+    }
+
+    #[cfg(feature = "web")]
+    fn get_web_settings(&self) -> web_emitter::Settings {
+        web_emitter::Settings::new()
+            .set_kind(self.settings.kind)
+            .set_interval(self.settings.interval)
+    }
+
+    #[cfg(not(feature = "web"))]
+    fn set_emitter_thread<F>(&self, on_emit: F) -> Result<(), ClockError>
+    where
+        F: FnMut(Time, EmitterContext<thread_emitter::Settings>) -> () + Sync + Send + 'static,
+    {
+        let mut emitter_guard = self
+            .emitter_ref
+            .lock()
+            .map_err(|_| ClockError::CouldNotSetTimeEmitter)?;
+
+        let settings = self.get_thread_settings();
+        let emitter = ThreadEmitter::start(settings, on_emit)
+            .map_err(|_| ClockError::CouldNotSetTimeEmitter)?;
+        *emitter_guard = Some(emitter);
+        Ok(())
+    }
+
+    #[cfg(feature = "web")]
+    fn set_emitter_web<F>(&self, on_emit: F) -> Result<(), ClockError>
+    where
+        F: FnMut(Time, EmitterContext<web_emitter::Settings>) -> () + 'static,
+    {
+        let mut emitter_guard = self
+            .emitter_ref
+            .lock()
+            .map_err(|_| ClockError::CouldNotSetTimeEmitter)?;
+
+        let settings = self.get_web_settings();
+        let emitter =
+            WebEmitter::start(settings, on_emit).map_err(|_| ClockError::CouldNotSetTimeEmitter)?;
+        *emitter_guard = Some(emitter);
+        Ok(())
     }
 }
 
 // 🧪 Tests --------------------------------------------------------------------------- /
-// 🧪 Unit tests for the Clock implementation
 
 #[cfg(all(test, not(feature = "web")))]
 mod tests {

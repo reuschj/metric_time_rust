@@ -12,31 +12,14 @@ use crate::{Period, TimeComponents, TimeKind};
 
 use super::time_conversions::{Converter, TimeConversions};
 
-// 🧪 Tests ------------------------------------------------------- /
-
-/// 🕛➡️🕒 Converts 12-hour format (AM/PM) to 24-hour format
+/// 🕛➡️🕒 Converts 12-hour format (AM/PM) to 24-hour format.
 ///
-/// # 📥 Arguments
-/// * `components` - The time components to convert
-/// * `period` - AM or PM indicator
+/// # Arguments
+/// * `components` - The time components to convert.
+/// * `period` - The `Period` (AM or PM).
 ///
-/// # 🔄 Returns
-/// Time components in 24-hour format
-///
-/// # 📝 Examples
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::{TimeComponents, Period};
-///
-/// let components = TimeComponents::new(6, 10, 12, 12345);
-/// let period = Period::AM;
-/// let converted = base12_to_base24(&components, &period);
-/// assert_eq!(converted.hours, 6);
-/// assert_eq!(converted.minutes, 10);
-/// assert_eq!(converted.seconds, 12);
-/// assert_eq!(converted.nanoseconds, 12345);
-/// ```
-/// 🕛➡️🕒 Converts 12-hour format (AM/PM) to 24-hour format
+/// # Returns
+/// Time components in 24-hour format.
 pub fn base12_to_base24(components: &TimeComponents, period: &Period) -> TimeComponents {
     TimeComponents {
         hours: match period {
@@ -61,47 +44,13 @@ pub fn base12_to_base24(components: &TimeComponents, period: &Period) -> TimeCom
     }
 }
 
-/// 🕒➡️🕛 Converts 24-hour format to 12-hour format (AM/PM)
-/// and time kind (base-12, base-24, or base-10)
-///
-/// The total nanoseconds is calculated by converting the time components to base-24 format
-/// if needed, then multiplying out each component by the appropriate nanosecond conversion
-/// factor for that time kind.
+/// 🕒➡️🕛 Converts 24-hour format to 12-hour format (AM/PM).
 ///
 /// # Arguments
-/// * `components` - The time components to calculate from
-/// * `kind` - The time kind (Base12, Base24, or Base10) determining conversion factors
+/// * `components` - The time components in 24-hour format.
 ///
 /// # Returns
-/// Total nanoseconds since midnight as u64
-///
-/// # Examples
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::{TimeComponents, Period};
-///
-/// let components = TimeComponents::new(6, 10, 12, 12345);
-/// let (converted, period) = base24_to_base12(&components);
-/// assert_eq!(converted.hours, 6);
-/// assert_eq!(converted.minutes, 10);
-/// assert_eq!(converted.seconds, 12);
-/// assert_eq!(converted.nanoseconds, 12345);
-/// assert_eq!(period, Period::AM);
-/// ```
-///
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::{TimeComponents, Period};
-///
-/// let components = TimeComponents::new(14, 30, 45, 123456);
-/// let (converted, period) = base24_to_base12(&components);
-/// assert_eq!(converted.hours, 2);
-/// assert_eq!(converted.minutes, 30);
-/// assert_eq!(converted.seconds, 45);
-/// assert_eq!(converted.nanoseconds, 123456);
-/// assert_eq!(period, Period::PM);
-/// ```
-/// 🕒➡️🕛 Converts 24-hour format to 12-hour format (AM/PM)
+/// A tuple containing the converted `TimeComponents` and the `Period` (AM or PM).
 pub fn base24_to_base12(components: &TimeComponents) -> (TimeComponents, Period) {
     let period = if components.hours < 12 {
         Period::AM
@@ -132,34 +81,6 @@ pub fn base24_to_base12(components: &TimeComponents) -> (TimeComponents, Period)
     (components, period)
 }
 
-/// Calculate the total nanoseconds since midnight for a given set of time components
-/// and time kind (base-12, base-24, or base-10)
-///
-/// The total nanoseconds is calculated by converting the time components to base-24 format
-/// if needed, then multiplying out each component by the appropriate nanosecond conversion
-/// factor for that time kind.
-///
-/// # Arguments
-/// * `components` - The time components to calculate from
-/// * `kind` - The time kind (Base12, Base24, or Base10) determining conversion factors
-///
-/// # Returns
-/// Total nanoseconds since midnight as u64
-///
-/// # Examples
-///
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::{TimeComponents, TimeKind};
-///
-/// let components = TimeComponents::new(6, 10, 12, 12345);
-/// let ns = calc_ns_since_midnight(&components, &TimeKind::Base24);
-/// assert_eq!(ns, 22_212_000_012_345);
-/// ```
-///
-/// This function is used internally by the conversion functions in this module:
-/// - [`base10_to_base24`]
-/// - [`base24_to_base10`]
 /// ⏱️ Calculate the total nanoseconds since midnight for a given set of time components
 fn calc_ns_since_midnight(components: &TimeComponents, kind: &TimeKind) -> u64 {
     let tc = TimeConversions::from(kind);
@@ -178,32 +99,13 @@ fn calc_ns_since_midnight(components: &TimeComponents, kind: &TimeKind) -> u64 {
     hours + minutes + seconds + nanoseconds as u64
 }
 
-/// Calculate the total nanoseconds since midnight in metric time format
-///
-/// This helper function takes metric time components and calculates the total
-/// nanoseconds elapsed since midnight. Used internally by the base10/base24
-/// conversion functions.
+/// 🔟➡️🕒 Converts metric time (base-10) to standard time (base-24).
 ///
 /// # Arguments
-/// * `components` - The time components in metric format
-/// * `kind` - Must be TimeKind::Base10
+/// * `metric_components` - The time components in metric format.
 ///
 /// # Returns
-/// Total nanoseconds since midnight as u64
-///
-/// # Examples
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::TimeComponents;
-///
-/// let components = TimeComponents::new(1, 92, 31, 624_371_283);
-/// let converted = base10_to_base24(&components);
-/// assert_eq!(converted.hours, 4);
-/// assert_eq!(converted.minutes, 36);
-/// assert_eq!(converted.seconds, 56);
-/// assert!(converted.nanoseconds > 123_000_000);
-/// ```
-/// 🔟➡️🕒 Convert metric time (base-10) to standard time (base-24)
+/// `TimeComponents` in 24-hour format.
 pub fn base10_to_base24(metric_components: &TimeComponents) -> TimeComponents {
     let metric_conv = Converter::metric();
     let std_conversions = TimeConversions::standard();
@@ -223,46 +125,13 @@ pub fn base10_to_base24(metric_components: &TimeComponents) -> TimeComponents {
     }
 }
 
-/// Convert time from base-24 (24-hour) format to base-10 (metric) format
-///
-/// Takes time components in standard 24-hour format and converts them to
-/// metric time format, where each hour is 100 minutes, each minute is 100
-/// seconds, and each second is 100 centiseconds.
-///
-/// Metric time divides the day into 10 metric hours, each metric hour into
-/// 100 metric minutes, and each metric minute into 100 metric seconds.
+/// 🕒➡️🔟 Converts standard time (base-24) to metric time (base-10).
 ///
 /// # Arguments
-/// * `components` - The time components in 24-hour format
+/// * `standard_components` - The time components in 24-hour format.
 ///
 /// # Returns
-/// New TimeComponents struct in base-10 (metric) format
-///
-/// # Examples
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::TimeComponents;
-///
-/// let std_time = TimeComponents::new(16, 10, 23, 12345);
-/// let metric = base24_to_base10(&std_time);
-/// assert_eq!(metric.hours, 6);
-/// assert_eq!(metric.minutes, 73);
-/// assert_eq!(metric.seconds, 87);
-/// assert!(metric.nanoseconds > 700_000_000);
-/// ```
-///
-/// ```ignore
-/// // Internal function example:
-/// use crate::time_lib::TimeComponents;
-///
-/// let std_time = TimeComponents::new(4, 36, 56, 123_456_789);
-/// let metric = base24_to_base10(&std_time);
-/// assert_eq!(metric.hours, 1);
-/// assert_eq!(metric.minutes, 92);
-/// assert_eq!(metric.seconds, 31);
-/// assert!(metric.nanoseconds > 600_000_000);
-/// ```
-/// 🕒➡️🔟 Convert standard time (base-24) to metric time (base-10)
+/// `TimeComponents` in metric (base-10) format.
 pub fn base24_to_base10(standard_components: &TimeComponents) -> TimeComponents {
     let metric_conv = Converter::metric();
     let metric_conversions = TimeConversions::metric();

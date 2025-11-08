@@ -10,9 +10,10 @@
 //!
 //! # 🧩 Key Components
 //!
-//! - [`EmitterSettingsTrait`] - ⚙️ A trait for configuring time emitters
-//! - [`Emittable`] - 🧩 Core functionality that all time emitters must implement
-//! - [`Context`] - 📦 Context information provided with each time event
+//! - [`EmitterSettingsTrait`]: ⚙️ A trait for configuring time emitters.
+//! - [`EmitterContext`]: 📦 Context information provided with each time event.
+//! - [`ThreadStartable`] & [`WebStartable`]: Traits for starting an emitter on native and web platforms.
+//! - [`ThreadStoppable`] & [`WebStoppable`]: Traits for stopping an emitter on native and web platforms.
 //!
 //! # 🌐 Cross-platform Support
 //!
@@ -99,38 +100,80 @@ pub struct EmitterContext<S: EmitterSettingsTrait> {
 
 // 🏁 Startable trait ------------------------------------------------------------------------- /
 
-pub trait Startable: Debug + Clone {
+/// 🏁 A trait for starting a time emitter on a separate thread.
+///
+/// This is designed for native environments where threading is available.
+#[cfg(not(feature = "web"))]
+pub trait ThreadStartable: Debug + Clone {
     type Settings: EmitterSettingsTrait;
     type ErrorType: std::error::Error;
 
+    /// Starts a new time emitter with the given settings and callback.
+    ///
+    /// # Arguments
+    ///
+    /// * `settings` - Configuration for the time emitter.
+    /// * `on_emit` - A closure that is called for each time event. It must be `Send + Sync + 'static`.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the new emitter instance or an error.
     fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Self::ErrorType>
     where
         Self: Sized,
         F: FnMut(Time, EmitterContext<Self::Settings>) -> () + Send + Sync + 'static;
 
+    /// Gets a reference to the settings of the time emitter.
     fn settings(&self) -> &Self::Settings;
 }
 
+/// 🏁 A trait for starting a time emitter in a WebAssembly environment.
+#[cfg(feature = "web")]
 pub trait WebStartable: Debug + Clone {
     type Settings: EmitterSettingsTrait;
     type ErrorType: std::error::Error;
 
+    /// Starts a new time emitter with the given settings and callback.
+    ///
+    /// # Arguments
+    ///
+    /// * `settings` - Configuration for the time emitter.
+    /// * `on_emit` - A closure that is called for each time event. It must have a `'static` lifetime.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the new emitter instance or an error.
     fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Self::ErrorType>
     where
         Self: Sized,
         F: FnMut(Time, EmitterContext<Self::Settings>) -> () + 'static;
 
+    /// Gets a reference to the settings of the time emitter.
     fn settings(&self) -> &Self::Settings;
 }
 
 /// 🛑 Stoppable trait --------------------------------------------------------------------------- /
 
-pub trait Stoppable: Debug + Clone {
+/// 🛑 A trait for stopping a time emitter that runs on a separate thread.
+#[cfg(not(feature = "web"))]
+pub trait ThreadStoppable: Debug + Clone {
     type OnStopValue;
     type ErrorType: std::error::Error;
 
-    fn stop(&mut self) -> Result<Self::OnStopValue, Self::ErrorType>;
+    /// Sends a signal to stop the emitter. This is non-blocking.
+    fn stop(&self) -> Result<Self::OnStopValue, Self::ErrorType>;
+
+    /// Waits for the emitter thread to complete its execution. This is a blocking call.
     fn await_completion(&mut self) -> Result<Self::OnStopValue, Self::ErrorType>;
+}
+
+/// 🛑 A trait for stopping a time emitter in a WebAssembly environment.
+#[cfg(feature = "web")]
+pub trait WebStoppable: Debug + Clone {
+    type ErrorType: std::error::Error;
+
+    /// Stops the time emitter.
+    fn stop(&self) -> Result<(), Self::ErrorType>;
 }
 
 // 🧪 Tests -------------------------------------------------------------------------------- /

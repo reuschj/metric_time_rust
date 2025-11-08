@@ -24,7 +24,7 @@
 //! let rotations = TimeRotationComponents::new(time, TimeKind::Base12(Period::AM));
 //! ```
 
-use std::fmt::{Display, Error, Formatter};
+use std::fmt::{Debug, Display, Error, Formatter};
 use std::ops::Range;
 
 use super::time_conversions::TimeConversions;
@@ -32,9 +32,9 @@ use crate::constants::{FULL_CIRCLE_DEGREES, NS_PER_SEC};
 
 // 🕰️ Period --------------------------------------------------------------------------- /
 
-/// 🕛 Represents AM/PM periods for 12-hour time format
+/// 🕛 Represents AM/PM periods for 12-hour time format.
 ///
-/// This enum is used with TimeKind::Base12 to indicate morning or afternoon/evening.
+/// This enum is used with `TimeKind::Base12` to indicate morning or afternoon/evening.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Period {
     AM, // 🌅 Morning period
@@ -53,7 +53,7 @@ impl Display for Period {
 
 // 🔢 Time Kind --------------------------------------------------------------------------- /
 
-/// 🔢 Represents the base time format (10, 12, or 24 hour)
+/// 🔢 Represents the base time format (10, 12, or 24 hour).
 ///
 /// This enum defines the different time formats supported by the library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -62,8 +62,6 @@ pub enum TimeKind {
     Base12(Period), // 🕛 12-hour format with AM/PM
     Base24,         // 🕒 24-hour format
 }
-
-impl TimeKind {}
 
 impl Display for TimeKind {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), Error> {
@@ -99,11 +97,9 @@ impl From<&TimeKind> for TimeConversions {
 /// let time = TimeComponents::new(11, 30, 0, 0);
 /// assert_eq!(time.hours, 11);
 /// assert_eq!(time.minutes, 30);
-/// assert_eq!(time.seconds, 0);
-/// assert_eq!(time.nanoseconds, 0);
 /// ```
 ///
-/// 🔢 Time components can be used with different time bases:
+/// Time components can be used with different time bases:
 ///
 /// - Base 10 (Metric): Hours 0-9, Minutes/Seconds 0-99
 /// - Base 12 (AM/PM): Hours 1-12, Minutes/Seconds 0-59
@@ -119,30 +115,34 @@ pub struct TimeComponents {
 }
 
 impl TimeComponents {
-    // 🧩 Implementation of TimeComponents
     /// 🆕 Creates a new `TimeComponents` instance with the specified time values.
     ///
     /// # Arguments
     ///
-    /// * `hours` - The hours value (range depends on time base)
-    /// * `minutes` - The minutes value (range depends on time base)
-    /// * `seconds` - The seconds value (range depends on time base)
-    /// * `nanoseconds` - The nanoseconds value (0-999,999,999)
-    ///
-    /// # 📝 Examples
-    ///
-    /// ```
-    /// use metric_time::TimeComponents;
-    ///
-    /// let time = TimeComponents::new(11, 30, 45, 0);
-    /// ```
-    /// 🆕 Creates a new TimeComponents instance with the provided values
+    /// * `hours` - The hours value (range depends on time base).
+    /// * `minutes` - The minutes value (range depends on time base).
+    /// * `seconds` - The seconds value (range depends on time base).
+    /// * `nanoseconds` - The nanoseconds value (0-999,999,999).
     pub fn new(hours: u8, minutes: u8, seconds: u8, nanoseconds: u32) -> Self {
         Self {
             hours,
             minutes,
             seconds,
             nanoseconds,
+        }
+    }
+
+    /// 📋 Retrieves the value of a specific time component.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - The time component to retrieve.
+    pub fn get_component(&self, component: TimeComponent) -> TimeComponentWithValue {
+        match component {
+            TimeComponent::Hours => TimeComponentWithValue::Hours(self.hours),
+            TimeComponent::Minutes => TimeComponentWithValue::Minutes(self.minutes),
+            TimeComponent::Seconds => TimeComponentWithValue::Seconds(self.seconds),
+            TimeComponent::Nanoseconds => TimeComponentWithValue::Nanoseconds(self.nanoseconds),
         }
     }
 }
@@ -160,10 +160,28 @@ impl Display for TimeComponents {
     }
 }
 
+/// TimeComponent represents a single component of a time value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TimeComponent {
+    Hours,
+    Minutes,
+    Seconds,
+    Nanoseconds,
+}
+
+/// TimeComponentWithValue represents a single component of a time value with a value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TimeComponentWithValue {
+    Hours(u8),
+    Minutes(u8),
+    Seconds(u8),
+    Nanoseconds(u32),
+}
+
 // ⚠️ TimeRanges --------------------------------------------------------------------------- /
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// ❌ Errors that can occur when time values are out of bounds
+/// ❌ Errors that can occur when time values are out of bounds.
 pub enum TimeRangeError {
     HoursLow,
     HoursHigh,
@@ -203,6 +221,9 @@ impl Display for TimeRangeError {
 /// - Base 12 (AM/PM): Hours 1-12, Minutes/Seconds 0-59
 /// - Base 24: Hours 0-23, Minutes/Seconds 0-59
 ///
+/// The struct enforces valid ranges through the `check()` method which returns
+/// a `Result` indicating if the time components are valid for the specified format.
+///
 /// # Examples
 ///
 /// ```
@@ -214,9 +235,6 @@ impl Display for TimeRangeError {
 /// // Should be valid for 24-hour format
 /// assert!(bounds.check(time).is_ok());
 /// ```
-///
-/// The struct enforces valid ranges through the `check()` method which returns
-/// a Result indicating if the time components are valid for the specified format.
 #[derive(Debug, Clone)]
 pub struct TimeBounds {
     pub hours: Range<u8>,
@@ -229,31 +247,11 @@ impl TimeBounds {
     /// 🆕 Creates new time bounds for a specific time format.
     ///
     /// This establishes the valid ranges for hours, minutes, seconds and nanoseconds
-    /// based on the time format specified:
-    ///
-    /// - Base 10 (Metric): Hours 0-9, Minutes/Seconds 0-99
-    /// - Base 12 (AM/PM): Hours 1-12, Minutes/Seconds 0-59
-    /// - Base 24: Hours 0-23, Minutes/Seconds 0-59
+    /// based on the time format specified.
     ///
     /// # Arguments
     ///
-    /// * `kind` - The time format to create bounds for (Base10, Base12, or Base24)
-    ///
-    /// # 📝 Examples
-    ///
-    /// ```
-    /// use metric_time::{TimeBounds, TimeKind, Period};
-    ///
-    /// // Create bounds for 12-hour format
-    /// let bounds = TimeBounds::new(TimeKind::Base12(Period::AM));
-    ///
-    /// // Create bounds for 24-hour format
-    /// let bounds_24 = TimeBounds::new(TimeKind::Base24);
-    ///
-    /// // Create bounds for metric time
-    /// let bounds_10 = TimeBounds::new(TimeKind::Base10);
-    /// ```
-    /// 🆕 Creates a new TimeBounds instance for the specified time kind
+    /// * `kind` - The time format to create bounds for (Base10, Base12, or Base24).
     pub fn new(kind: TimeKind) -> Self {
         match kind {
             TimeKind::Base10 => Self {
@@ -282,25 +280,14 @@ impl TimeBounds {
     /// Checks if the provided time components fall within the valid ranges for hours,
     /// minutes, seconds and nanoseconds defined by these bounds.
     ///
-    /// # 📥 Arguments
+    /// # Arguments
     ///
-    /// * `components` - The time components to validate
+    /// * `components` - The time components to validate.
     ///
-    /// # 📤 Returns
+    /// # Returns
     ///
-    /// * `Ok(TimeComponents)` - If all components are within bounds
-    /// * `Err(TimeRangeError)` - If any component is outside its valid range
-    ///
-    /// # 📝 Examples
-    ///
-    /// ```
-    /// use metric_time::{TimeBounds, TimeComponents, TimeKind};
-    ///
-    /// let bounds = TimeBounds::new(TimeKind::Base24);
-    /// let time = TimeComponents::new(13, 30, 0, 0);
-    /// assert!(bounds.check(time).is_ok());
-    /// ```
-    /// ✅ Checks if time components are within the valid range
+    /// * `Ok(TimeComponents)` - If all components are within bounds.
+    /// * `Err(TimeRangeError)` - If any component is outside its valid range.
     pub fn check(&self, components: TimeComponents) -> Result<TimeComponents, TimeRangeError> {
         if !self.hours.contains(&components.hours) {
             if components.hours < self.hours.start {
@@ -341,16 +328,10 @@ impl TimeBounds {
 /// This struct calculates the rotational angles (in degrees) for clock hands based on time components
 /// and the specified time format (10, 12, or 24 hour).
 ///
-/// The angles are calculated as:
-/// - 🕐 Hours hand: 0-360 degrees for a full rotation
-/// - ⏱️ Minutes hand: 0-360 degrees for a full rotation
-/// - ⏲️ Seconds hand: 0-360 degrees for a full rotation
-/// - ⚛️ Nanoseconds hand: 0-360 degrees for a full rotation
-///
 /// The rotations take into account fractional components, so the hands move smoothly
 /// rather than jumping between positions.
 ///
-/// # 📝 Examples
+/// # Examples
 ///
 /// ```
 /// use metric_time::{TimeComponents, TimeKind, TimeRotationComponents};
@@ -358,8 +339,7 @@ impl TimeBounds {
 /// let time = TimeComponents::new(3, 30, 0, 0);
 /// let rotations = TimeRotationComponents::new(time, TimeKind::Base24);
 ///
-/// // Hour hand will be at ~105 degrees (3/24 * 360 + small offset for minutes)
-/// // Hour hand will be at a position based on the time
+/// // The hour hand's rotation will be calculated based on the hours and minutes.
 /// assert!(rotations.hours() >= 0.0 && rotations.hours() <= 360.0);
 ///
 /// // Minute hand will be at 180 degrees (30/60 * 360)
@@ -374,27 +354,16 @@ pub struct TimeRotationComponents {
 }
 
 impl TimeRotationComponents {
-    // 📐 Implementation for calculating rotation angles
     /// 🆕 Creates a new `TimeRotationComponents` from time components and format.
     ///
     /// Calculates the rotational angles for clock hands based on the provided time
     /// components and time format. The angles are normalized to degrees (0-360)
     /// and take into account fractional components for smooth movement.
     ///
-    /// # 📥 Arguments
+    /// # Arguments
     ///
-    /// * `components` - The time components to convert to rotations
-    /// * `kind` - The time format (Base10, Base12, or Base24)
-    ///
-    /// # 📝 Examples
-    ///
-    /// ```
-    /// use metric_time::{TimeComponents, TimeKind, TimeRotationComponents};
-    ///
-    /// let time = TimeComponents::new(3, 30, 0, 0);
-    /// let rotations = TimeRotationComponents::new(time, TimeKind::Base24);
-    /// ```
-    /// 🆕 Creates a new TimeRotationComponents instance
+    /// * `components` - The time components to convert to rotations.
+    /// * `kind` - The time format (Base10, Base12, or Base24).
     pub fn new(components: TimeComponents, kind: TimeKind) -> Self {
         let TimeComponents {
             hours,
@@ -416,50 +385,32 @@ impl TimeRotationComponents {
         }
     }
 
-    // -------------------------------------------- /
-
     /// 🕐 Returns the rotation angle in degrees for the hours hand.
-    ///
-    /// The angle ranges from 0 to 360 degrees and includes fractional
-    /// components from minutes for smooth movement.
-    /// 🕐 Gets the hours hand rotation in degrees
     pub fn hours(&self) -> f64 {
         self.hours
     }
 
     /// ⏱️ Returns the rotation angle in degrees for the minutes hand.
-    ///
-    /// The angle ranges from 0 to 360 degrees and includes fractional
-    /// components from seconds for smooth movement.
-    /// ⏱️ Gets the minutes hand rotation in degrees
     pub fn minutes(&self) -> f64 {
         self.minutes
     }
 
     /// ⏲️ Returns the rotation angle in degrees for the seconds hand.
-    ///
-    /// The angle ranges from 0 to 360 degrees and includes fractional
-    /// components from nanoseconds for smooth movement.
-    /// ⏲️ Gets the seconds hand rotation in degrees
     pub fn seconds(&self) -> f64 {
         self.seconds
     }
 
-    /// Returns the rotation angle in degrees for the nanoseconds hand.
-    ///
-    /// The angle ranges from 0 to 360 degrees based on the nanosecond
-    /// component of the time.
-    /// ⚛️ Gets the nanoseconds hand rotation in degrees
+    /// ⚛️ Returns the rotation angle in degrees for the nanoseconds hand.
     pub fn nanoseconds(&self) -> f64 {
         self.nanoseconds
     }
 }
 
-// 🧪 Tests --------------------------------------------------------------------------- /
+// 🔄 TimeConversionTrait --------------------------------------------------------------------------- /
 
-/// 🔄 Trait for converting between different time formats
+/// Trait for converting between different time formats.
 pub trait TimeConversionTrait {
-    /// 🔄 Converts time to another format specified by TimeKind
+    /// Converts time to another format specified by `TimeKind`.
     fn to(&self, kind: TimeKind) -> Self;
 }
 
@@ -472,9 +423,7 @@ mod tests {
         TimeRotationComponents,
     };
 
-    use super::Period;
-
-    // 🧪 Test helper function to check time bounds
+    use super::{Period, TimeComponent, TimeComponentWithValue};
 
     /// ✅ Helper function to check time bounds validation
     fn check_bounds(
@@ -598,5 +547,27 @@ mod tests {
         assert_eq!(round_float(rotations.minutes()), 162.84);
         assert_eq!(round_float(rotations.seconds()), 83.64);
         assert_eq!(round_float(rotations.nanoseconds()), 84.24);
+    }
+
+    /// 🧩 Test for getting a single time component
+    #[test]
+    fn it_can_get_a_single_time_component() {
+        let components = TimeComponents::new(1, 2, 3, 4);
+        assert_eq!(
+            components.get_component(TimeComponent::Hours),
+            TimeComponentWithValue::Hours(1)
+        );
+        assert_eq!(
+            components.get_component(TimeComponent::Minutes),
+            TimeComponentWithValue::Minutes(2)
+        );
+        assert_eq!(
+            components.get_component(TimeComponent::Seconds),
+            TimeComponentWithValue::Seconds(3)
+        );
+        assert_eq!(
+            components.get_component(TimeComponent::Nanoseconds),
+            TimeComponentWithValue::Nanoseconds(4)
+        );
     }
 }

@@ -4,7 +4,6 @@
 //!
 //! - `ClockSettings`: ⚙️ Configuration struct for clock behavior
 //! - `ClockError`: ❌ Error types for clock operations
-//! - `ClockTrait`: 🧩 Core trait defining clock behavior
 //!
 //! # 📚 Examples
 //!
@@ -18,7 +17,16 @@
 //! // Use settings to configure your clock
 //! ```
 
-use std::{error::Error, fmt::Display, time::Duration};
+use std::{
+    error::Error,
+    fmt::{Debug, Display},
+};
+
+#[cfg(not(feature = "web"))]
+use std::time::Duration;
+
+#[cfg(feature = "web")]
+use web_time::Duration;
 
 use crate::TimeKind;
 
@@ -102,12 +110,17 @@ impl ClockSettings {
 
 // ❌ ClockError ----------------------------------------------------------------------- /
 
+/// Represents errors that can occur during clock operations.
 #[derive(Debug)]
 pub enum ClockError {
-    NoTimeSet,              // ⚠️ No time has been set
-    CouldNotSetTime,        // ❌ Failed to set the time
-    CouldNotSetTimeEmitter, // 📡 Failed to set time emitter
-    CouldNotUnsubscribe,    // 🔌 Failed to unsubscribe
+    /// ⚠️ No time has been set on the clock.
+    NoTimeSet,
+    /// ❌ Failed to set the time.
+    CouldNotSetTime,
+    /// 📡 Failed to set up the time emitter.
+    CouldNotSetTimeEmitter,
+    /// 🔌 Failed to unsubscribe from the time emitter.
+    CouldNotUnsubscribe,
 }
 
 impl Error for ClockError {}

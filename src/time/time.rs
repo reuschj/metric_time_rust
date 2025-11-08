@@ -77,17 +77,12 @@ use crate::{
 ///
 /// # ✨ Features
 ///
-/// - 🆕 Create time values in any supported format
-/// - 🔄 Convert between formats while preserving the exact time
-/// - 🔍 Access individual components (hours, minutes, seconds, nanoseconds)
-/// - 📐 Calculate clock hand rotations
-/// - ⚖️ Compare and order time values
-/// - 📋 Format time as strings
-///
-/// # 📊 Properties
-///
-/// - 🧩 `components`: The time components (hours, minutes, seconds, nanoseconds)
-/// - 🔢 `kind`: The time format (Base10, Base12, or Base24)
+/// - Create time values in any supported format.
+/// - Convert between formats while preserving the exact time.
+/// - Access individual components (hours, minutes, seconds, nanoseconds).
+/// - Calculate clock hand rotations.
+/// - Compare and order time values.
+/// - Format time as strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Time {
     components: TimeComponents,
@@ -155,17 +150,11 @@ impl Time {
     // 🔍 Component Access -------------------------------------------- /
 
     /// 🧩 Returns the time components of this Time instance.
-    ///
-    /// # 🔄 Returns
-    /// * `TimeComponents` - Copy of the internal time components
     pub fn components(&self) -> TimeComponents {
         self.components
     }
 
     /// 🔢 Returns the time format of this Time instance.
-    ///
-    /// # 🔄 Returns
-    /// * `TimeKind` - The format (Base10, Base12, or Base24)
     pub fn kind(&self) -> TimeKind {
         self.kind
     }
@@ -173,33 +162,21 @@ impl Time {
     // 🔍 Individual Components -------------------------------------------- /
 
     /// 🕐 Returns the hours component of the time.
-    ///
-    /// # 🔄 Returns
-    /// * `u8` - Hours value
     pub fn hours(&self) -> u8 {
         self.components.hours
     }
 
     /// ⏱️ Returns the minutes component of the time.
-    ///
-    /// # 🔄 Returns
-    /// * `u8` - Minutes value
     pub fn minutes(&self) -> u8 {
         self.components.minutes
     }
 
     /// ⏲️ Returns the seconds component of the time.
-    ///
-    /// # 🔄 Returns
-    /// * `u8` - Seconds value
     pub fn seconds(&self) -> u8 {
         self.components.seconds
     }
 
     /// ⚛️ Returns the nanoseconds component of the time.
-    ///
-    /// # 🔄 Returns
-    /// * `u32` - Nanoseconds value
     pub fn nanoseconds(&self) -> u32 {
         self.components.nanoseconds
     }
@@ -207,25 +184,16 @@ impl Time {
     // 📊 Derived Properties -------------------------------------------- /
 
     /// 📐 Calculates the rotation angles for clock hands based on the current time.
-    ///
-    /// # 🔄 Returns
-    /// * `TimeRotationComponents` - Rotation angles for hours, minutes, seconds, and nanoseconds
     pub fn rotations(&self) -> TimeRotationComponents {
         TimeRotationComponents::new(self.components, self.kind)
     }
 
     /// ⚡ Returns the milliseconds component of the time.
-    ///
-    /// # 🔄 Returns
-    /// * `u32` - Milliseconds value
     pub fn milliseconds(&self) -> u32 {
         self.components.nanoseconds / 1_000_000
     }
 
     /// 🔬 Returns the microseconds component of the time.
-    ///
-    /// # 🔄 Returns
-    /// * `u32` - Microseconds value
     pub fn microseconds(&self) -> u32 {
         self.components.nanoseconds / 1_000
     }
@@ -241,17 +209,6 @@ impl From<NaiveTime> for Time {
     ///
     /// # 🔄 Returns
     /// * `Time` - A new Time instance in Base24 format
-    ///
-    /// # 📝 Examples
-    /// ```
-    /// use chrono::NaiveTime;
-    /// use metric_time::Time;
-    ///
-    /// let naive_time = NaiveTime::from_hms_opt(14, 30, 0).unwrap();
-    /// let time = Time::from(naive_time);
-    /// assert_eq!(time.hours(), 14);
-    /// assert_eq!(time.minutes(), 30);
-    /// ```
     fn from(value: NaiveTime) -> Self {
         let components = TimeComponents {
             hours: value.hour() as u8,
@@ -278,20 +235,6 @@ impl TimeConversionTrait for Time {
     ///
     /// # 🔄 Returns
     /// * `Self` - A new Time instance in the requested format
-    ///
-    /// # 📝 Examples
-    /// ```
-    /// use metric_time::{Time, TimeComponents, TimeKind, Period, TimeConversionTrait};
-    ///
-    /// let time_24 = Time::base24(TimeComponents::new(14, 30, 0, 0)).unwrap();
-    ///
-    /// // Convert to 12-hour format
-    /// let time_12 = time_24.to(TimeKind::Base12(Period::PM));
-    /// assert_eq!(time_12.hours(), 2);
-    ///
-    /// // Convert to metric time
-    /// let time_10 = time_24.to(TimeKind::Base10);
-    /// ```
     fn to(&self, kind: TimeKind) -> Self {
         match self.kind {
             TimeKind::Base10 => match kind {

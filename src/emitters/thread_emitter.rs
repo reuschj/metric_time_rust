@@ -13,7 +13,7 @@
 //! # 📚 Usage Example
 //!
 //! ```rust,no_run
-//! use metric_time::{Emitter, EmitterSettings, Startable};
+//! use metric_time::{Emitter, EmitterSettings, ThreadStartable};
 //! use std::time::Duration;
 //!
 //! // Create emitter with default settings (1 second interval)
@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use super::lib::{EmitterContext, EmitterSettingsTrait, Startable, Stoppable};
+use super::lib::{EmitterContext, EmitterSettingsTrait, ThreadStartable, ThreadStoppable};
 use crate::{Time, TimeConversionTrait, TimeKind};
 
 // 📡 Emitter ----------------------------------------------------------------------- /
@@ -47,7 +47,8 @@ use crate::{Time, TimeConversionTrait, TimeKind};
 /// The `Emitter` uses thread-safe constructs (Arc, Mutex) to allow
 /// safe sharing between threads. The background thread will continue running
 /// until the interval is stopped or dropped.
-pub struct Emitter {
+#[cfg(not(feature = "web"))]
+pub struct ThreadEmitter {
     /// The configuration settings for this emitter
     settings: Settings,
     /// Subscription for communicating with the background thread
@@ -58,7 +59,8 @@ pub struct Emitter {
     callback: Arc<Mutex<Box<dyn FnMut(Time, EmitterContext<Settings>) -> () + Send + Sync>>>,
 }
 
-impl Drop for Emitter {
+#[cfg(not(feature = "web"))]
+impl Drop for ThreadEmitter {
     fn drop(&mut self) {
         self.stop().unwrap_or_else(|err| {
             eprintln!("Failed to finish interval: {}", err);
@@ -66,7 +68,13 @@ impl Drop for Emitter {
     }
 }
 
-impl Clone for Emitter {
+#[cfg(not(feature = "web"))]
+impl Clone for ThreadEmitter {
+    /// Clones the emitter.
+    ///
+    /// The cloned instance will share the same underlying subscription and settings,
+    /// but it will not have a handle to the background thread. This means that
+    /// `await_completion` cannot be called on the cloned instance.
     fn clone(&self) -> Self {
         Self {
             settings: self.settings.clone(),
@@ -77,11 +85,13 @@ impl Clone for Emitter {
     }
 }
 
-unsafe impl Send for Emitter {}
+#[cfg(not(feature = "web"))]
+unsafe impl Send for ThreadEmitter {}
 
-unsafe impl Sync for Emitter {}
+#[cfg(not(feature = "web"))]
+unsafe impl Sync for ThreadEmitter {}
 
-impl Debug for Emitter {
+impl Debug for ThreadEmitter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Interval")
             .field("settings", &self.settings)
@@ -90,7 +100,8 @@ impl Debug for Emitter {
     }
 }
 
-impl Startable for Emitter {
+#[cfg(not(feature = "web"))]
+impl ThreadStartable for ThreadEmitter {
     type Settings = Settings;
     type ErrorType = Error;
 
@@ -109,11 +120,12 @@ impl Startable for Emitter {
     ///
     /// A new instance of the emitter
     ///
-    /// # 🔒 Thread Safety
-    /// # Thread Behavior
+    /// # 🧵 Thread Behavior
     ///
     /// This method spawns a background thread that will continue running
-    /// until the interval is stopped or dropped.
+    /// until the interval is stopped or dropped. The provided `on_emit` callback
+    /// must be thread-safe (implement `Send` and `Sync`) as it will be executed
+    /// on this background thread.
     fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Error>
     where
         F: FnMut(Time, EmitterContext<Self::Settings>) -> () + Send + Sync + 'static,
@@ -209,7 +221,8 @@ impl Startable for Emitter {
     }
 }
 
-impl Stoppable for Emitter {
+#[cfg(not(feature = "web"))]
+impl ThreadStoppable for ThreadEmitter {
     type OnStopValue = ();
     type ErrorType = Error;
 
@@ -223,7 +236,7 @@ impl Stoppable for Emitter {
     ///
     /// A Result indicating success or failure of the stop operation.
     /// If the background thread has already been stopped or joined, an error is returned.
-    fn stop(&mut self) -> Result<Self::OnStopValue, Self::ErrorType> {
+    fn stop(&self) -> Result<Self::OnStopValue, Self::ErrorType> {
         self.subscription
             .unsubscribe()
             .map_err(|err| Error::StopError(err))
@@ -251,7 +264,8 @@ impl Stoppable for Emitter {
     }
 }
 
-impl Emitter {
+#[cfg(not(feature = "web"))]
+impl ThreadEmitter {
     /// Legacy method for joining the thread. Prefer using `await_completion()` instead.
     /// This method is kept for backward compatibility.
     ///
@@ -268,6 +282,7 @@ impl Emitter {
 /// 📨 Messages that can be sent to the background thread.
 ///
 /// These messages control the behavior of the emitter's background thread.
+#[cfg(not(feature = "web"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MessageType {
     /// 🚀 Start the emitter
@@ -284,12 +299,14 @@ pub enum MessageType {
 ///
 /// This struct provides a way to send messages to the background thread,
 /// particularly to stop it when the interval is no longer needed.
+#[cfg(not(feature = "web"))]
 #[derive(Debug, Clone)]
 pub struct Subscription {
     /// 📤 Channel sender for communicating with the background thread
     tx: Sender<MessageType>,
 }
 
+#[cfg(not(feature = "web"))]
 impl Subscription {
     /// 🆕 Creates a new subscription with the given sender.
     ///
@@ -320,6 +337,7 @@ impl Subscription {
 /// This struct implements the [`TimeEmitterSettingsTrait`] trait to provide
 /// configuration options for the emitter, such as the interval between
 /// events, the maximum number of events, and the time kind.
+#[cfg(not(feature = "web"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Settings {
     /// 🔢 Maximum number of events to emit (None means unlimited)
@@ -330,6 +348,7 @@ pub struct Settings {
     kind: TimeKind,
 }
 
+#[cfg(not(feature = "web"))]
 impl EmitterSettingsTrait for Settings {
     type Duration = Duration;
 
@@ -386,6 +405,7 @@ impl Default for Settings {
 ///
 /// This enum represents the different types of errors that can occur
 /// when working with a emitter in a standard environment.
+#[cfg(not(feature = "web"))]
 #[derive(Debug)]
 pub enum Error {
     /// 🧵 Error that occurred while joining the background thread
@@ -403,6 +423,7 @@ impl std::fmt::Display for Error {
     }
 }
 
+#[cfg(not(feature = "web"))]
 impl std::error::Error for Error {}
 
 // 🧪 Tests ----------------------------------------------------------------------- /
@@ -433,7 +454,7 @@ mod tests {
     /// 🏗️ Test for creating a emitter with default settings
     #[test]
     fn test_emitter_creation() {
-        let emitter = Emitter::start(Settings::default(), |_, _| {}).unwrap();
+        let emitter = ThreadEmitter::start(Settings::default(), |_, _| {}).unwrap();
         assert_eq!(emitter.settings().max_events(), None);
         assert_eq!(emitter.settings().interval(), Duration::from_secs(1));
     }
@@ -446,7 +467,7 @@ mod tests {
             .set_interval(Duration::from_millis(100))
             .set_kind(TimeKind::Base10);
 
-        let emitter = Emitter::start(settings, |_, _| {}).unwrap();
+        let emitter = ThreadEmitter::start(settings, |_, _| {}).unwrap();
         assert_eq!(emitter.settings().max_events(), Some(5));
         assert_eq!(emitter.settings().interval(), Duration::from_millis(100));
         assert_eq!(emitter.settings().kind(), TimeKind::Base10);
@@ -467,7 +488,7 @@ mod tests {
         let callback_current_time = Arc::clone(&current_time);
         let callback_event_count = Arc::clone(&event_count);
 
-        let mut emitter = Emitter::start(settings, move |time, _| {
+        let mut emitter = ThreadEmitter::start(settings, move |time, _| {
             let mut current_count = callback_event_count.lock().unwrap();
             *current_count += 1;
             let mut current_time = callback_current_time.lock().unwrap();
@@ -498,7 +519,7 @@ mod tests {
         let event_count = Arc::new(Mutex::new(initial_event_count));
         let callback_event_count = Arc::clone(&event_count);
 
-        let mut emitter = Emitter::start(
+        let mut emitter = ThreadEmitter::start(
             Settings::new().set_interval(Duration::from_millis(50)),
             move |_, _| {
                 let mut current_count = callback_event_count.lock().unwrap();
@@ -536,7 +557,7 @@ mod tests {
             .set_max_events(3)
             .set_interval(Duration::from_millis(10));
 
-        let mut emitter = Emitter::start(settings, move |_, ctx| {
+        let mut emitter = ThreadEmitter::start(settings, move |_, ctx| {
             let mut expected_index = expected_index.lock().unwrap();
             assert_eq!(ctx.index, *expected_index);
             assert_eq!(ctx.settings.max_events(), Some(3));
@@ -562,7 +583,7 @@ mod tests {
         let event_count = Arc::new(Mutex::new(0));
         let event_count_clone = Arc::clone(&event_count);
 
-        let mut emitter = Emitter::start(
+        let mut emitter = ThreadEmitter::start(
             Settings::new()
                 .set_max_events(3)
                 .set_interval(Duration::from_millis(10)),
