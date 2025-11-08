@@ -19,7 +19,6 @@
 //! - ⏰ `Time` - Time representation and manipulation
 //! - 📡 `Emitter` - Time event emission (not for web applications)
 //! - 📡 `WebEmitter` - Time event emission (for web applications)
-//! - 🛠️ `Builder` - Clock configuration
 //! - 📋 `Period`, `TimeBounds`, `TimeComponents` - Time utilities
 //!
 //! The library handles all conversions and formatting internally while providing
@@ -32,7 +31,7 @@ pub use clock::clock::Clock;
 pub use clock::lib::{ClockError, ClockSettings};
 
 // Emitters
-pub use emitters::lib::{Emittable, EmitterContext, EmitterSettingsTrait};
+pub use emitters::lib::{EmitterContext, EmitterSettingsTrait, Startable, Stoppable, WebStartable};
 #[cfg(not(feature = "web"))]
 pub use emitters::std_emitter::{
     Emitter, Settings as EmitterSettings, Subscription as EmitterSubscription,
@@ -47,9 +46,6 @@ pub use time::lib::{
 };
 pub use time::time::Time;
 pub use time::time_conversions::{Converter, TimeConversions};
-
-// Utils
-pub use util::builder::Builder;
 
 // 📦 Modules --------------------------------------------------------------------------------------- /
 
@@ -69,8 +65,5 @@ mod time {
     pub mod lib;
     pub mod time;
     pub mod time_conversions;
-}
-mod util {
-    pub mod builder;
 }
 mod constants;

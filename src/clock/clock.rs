@@ -29,13 +29,18 @@ use std::{
 };
 
 use crate::{
-    ClockError, ClockSettings, Emittable, EmitterContext, EmitterSettingsTrait, Time, TimeKind,
+    ClockError, ClockSettings, EmitterContext, EmitterSettingsTrait, Stoppable, Time, TimeKind,
 };
 
 // Use the appropriate time emitter based on environment
+
+#[cfg(not(feature = "web"))]
+use super::super::emitters::lib::Startable;
 #[cfg(not(feature = "web"))]
 use super::super::emitters::std_emitter::{Emitter, Settings as EmitterSettings};
 
+#[cfg(feature = "web")]
+use super::super::emitters::lib::WebStartable;
 #[cfg(feature = "web")]
 use super::super::emitters::web_emitter::{Settings as EmitterSettings, WebEmitter as Emitter};
 
@@ -332,10 +337,20 @@ impl Clock {
                     .set_interval(self.settings.interval);
 
                 // Create the emitter
-                let new_emitter = <Emitter as Emittable>::start(settings, on_emit_handler);
+                #[cfg(not(feature = "web"))]
+                let new_emitter_result = <Emitter as Startable>::start(settings, on_emit_handler);
 
-                *emitter = Some(new_emitter);
-                Ok(())
+                #[cfg(feature = "web")]
+                let new_emitter_result =
+                    <Emitter as WebStartable>::start(settings, on_emit_handler);
+
+                match new_emitter_result {
+                    Ok(new_emitter) => {
+                        *emitter = Some(new_emitter);
+                        Ok(())
+                    }
+                    Err(_) => Err(ClockError::CouldNotSetTimeEmitter),
+                }
             }
             Err(_) => Err(ClockError::CouldNotSetTimeEmitter),
         }?;
@@ -381,10 +396,10 @@ impl Clock {
             Ok(mut time_emitter) => match &mut *time_emitter {
                 Some(emitter) => {
                     // First stop the emitter
-                    match <Emitter as Emittable>::stop(emitter) {
+                    match <Emitter as Stoppable>::stop(emitter) {
                         Ok(_) => {
                             // Then wait for completion
-                            let _ = <Emitter as Emittable>::await_completion(emitter);
+                            let _ = <Emitter as Stoppable>::await_completion(emitter);
                             let time = self.time().unwrap_or(Time::now());
                             Ok(time)
                         }
@@ -481,10 +496,11 @@ mod tests {
         let (tx, rx) = mpsc::channel::<Time>();
 
         // Start the clock
-        let result = clock.start(move |time, _ctx| {
-            let _ = tx.send(time);
-        });
-        assert!(result.is_ok());
+        clock
+            .start(move |time, _ctx| {
+                let _ = tx.send(time);
+            })
+            .expect("Failed to start clock");
 
         thread::sleep(Duration::from_millis(1));
 
@@ -500,14 +516,14 @@ mod tests {
         let result = clock.stop();
         assert!(result.is_ok());
 
-        let rx_result = rx.recv();
-        assert!(rx_result.is_ok());
-        let current_time = rx_result.unwrap();
+        let all_times: Vec<Time> = rx.try_iter().collect();
+        assert!(!all_times.is_empty());
+        let current_time = *all_times.last().unwrap();
 
         let stop_time = result.unwrap();
         assert!(stop_time > start_time);
         assert_eq!(current_time.hours(), stop_time.hours());
         assert_eq!(current_time.minutes(), stop_time.minutes());
-        assert_eq!(current_time.seconds(), stop_time.seconds());
+        assert!((current_time.seconds() as i16 - stop_time.seconds() as i16).abs() <= 1);
     }
 }

@@ -13,11 +13,11 @@
 //! # 📚 Usage Example
 //!
 //! ```rust,no_run
-//! use metric_time::{Settings, WebEmitter, Emittable};
+//! use metric_time::{WebEmitterSettings, WebEmitter, WebStartable};
 //! use web_time::Duration;
 //!
 //! // Create time emitter with default settings (1 second interval)
-//! let emitter = WebEmitter::start(Settings::default(), |time, ctx| {
+//! let emitter = WebEmitter::start(WebEmitterSettings::default(), |time, ctx| {
 //!     // Handle time event in the browser
 //!     web_sys::console::log_1(&format!("Time: {}, Event #{}", time, ctx.index).into());
 //! });
@@ -25,16 +25,17 @@
 //! // The emitter will continue running until dropped or explicitly stopped
 //! ```
 
+#[cfg(feature = "web")]
+use js_sys::Function;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "web")]
 use wasm_bindgen::{prelude::*, JsValue};
 #[cfg(feature = "web")]
-use web_sys::js_sys::Function;
-#[cfg(feature = "web")]
 use web_time::Duration;
 
-use crate::{Emittable, EmitterContext, EmitterSettingsTrait, Time, TimeConversionTrait, TimeKind};
+use super::lib::{EmitterContext, EmitterSettingsTrait, Stoppable, WebStartable};
+use crate::{Time, TimeConversionTrait, TimeKind};
 
 #[cfg(feature = "web")]
 #[wasm_bindgen]
@@ -63,9 +64,8 @@ extern "C" {
 pub struct WebEmitter {
     /// ⚙️ The configuration settings for this time emitter
     settings: Settings,
-    //
-    closure: Arc<Mutex<Closure<dyn FnMut()>>>,
-    handle: Arc<Mutex<Result<JsValue, Error>>>,
+    handle: Option<JsValue>,
+    _closure: Option<Closure<dyn FnMut()>>,
 }
 
 #[cfg(feature = "web")]
@@ -74,17 +74,6 @@ impl Debug for WebEmitter {
         f.debug_struct("TimeEmitter")
             .field("settings", &self.settings)
             .finish()
-    }
-}
-
-#[cfg(feature = "web")]
-impl Clone for WebEmitter {
-    fn clone(&self) -> Self {
-        Self {
-            settings: self.settings.clone(),
-            closure: Arc::clone(&self.closure),
-            handle: Arc::clone(&self.handle),
-        }
     }
 }
 
@@ -99,9 +88,8 @@ impl Drop for WebEmitter {
 }
 
 #[cfg(feature = "web")]
-impl Emittable for WebEmitter {
+impl WebStartable for WebEmitter {
     type Settings = Settings;
-    type OnStopValue = JsValue;
     type ErrorType = Error;
 
     /// 🚀 Starts a new time emitter with the given settings and callback.
@@ -123,23 +111,21 @@ impl Emittable for WebEmitter {
     ///
     /// This method uses JavaScript's `setInterval` to schedule periodic events.
     /// The interval ID is stored for later cleanup.
-    fn start<F>(settings: Self::Settings, mut on_emit: F) -> Self
+    fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Error>
     where
-        F: 'static + FnMut(Time, EmitterContext<Self::Settings>) -> (),
+        F: FnMut(Time, EmitterContext<Self::Settings>) -> () + 'static,
     {
         let event_count = Arc::new(Mutex::new(0));
         let thread_event_count = Arc::clone(&event_count);
 
         let interval_ms = settings.interval().as_millis() as i32;
 
+        let mut on_emit = on_emit;
         let closure = Closure::wrap(Box::new(move || {
             let mut current_count = thread_event_count.lock().unwrap();
 
             if let Some(max_events) = settings.max_events() {
                 if *current_count >= max_events {
-                    // The interval will continue to fire, but the callback will do nothing.
-                    // The consumer of TimeEmitter should call .stop() or drop the emitter
-                    // to clean up the interval.
                     return;
                 }
             }
@@ -152,19 +138,18 @@ impl Emittable for WebEmitter {
             *current_count += 1;
         }) as Box<dyn FnMut()>);
 
-        match { set_interval(closure.as_ref().unchecked_ref::<Function>(), interval_ms) } {
-            Ok(handle) => Self {
+        let handle = set_interval(closure.as_ref().unchecked_ref::<Function>(), interval_ms);
+
+        match handle {
+            Ok(handle) => Ok(Self {
                 settings,
-                closure: Arc::new(Mutex::new(closure)),
-                handle: Arc::new(Mutex::new(Ok(handle))),
-            },
+                handle: Some(handle),
+                _closure: Some(closure),
+            }),
             Err(err) => {
                 eprintln!("{:?}", err);
-                Self {
-                    settings,
-                    closure: Arc::new(Mutex::new(closure)),
-                    handle: Arc::new(Mutex::new(Err(Error::StartError(err)))),
-                }
+                // The closure is not forgotten here, so it will be dropped.
+                Err(Error::StartError(err))
             }
         }
     }
@@ -179,6 +164,11 @@ impl Emittable for WebEmitter {
     fn settings(&self) -> &Self::Settings {
         &self.settings
     }
+}
+
+impl Stoppable for WebEmitter {
+    type OnStopValue = JsValue;
+    type ErrorType = Error;
 
     /// 🛑 Stops the time emitter.
     ///
@@ -190,19 +180,10 @@ impl Emittable for WebEmitter {
     /// A Result indicating success or failure of the stop operation.
     /// If the browser window cannot be accessed, an error is returned.
     fn stop(&mut self) -> Result<JsValue, Error> {
-        if let Ok(mut guard) = self.handle.lock() {
-            // Take the value, leaving a placeholder.
-            match std::mem::replace(&mut *guard, Err(Error::StopError)) {
-                Ok(handle) => Ok(clear_interval(handle)),
-                Err(start_err) => {
-                    // It failed to start, so nothing to stop.
-                    // Put the original error back.
-                    *guard = Err(start_err);
-                    Err(Error::StopError)
-                }
-            }
+        self._closure.take();
+        if let Some(handle) = self.handle.take() {
+            Ok(clear_interval(handle))
         } else {
-            eprintln!("Failed to acquire lock on interval");
             Err(Error::StopError)
         }
     }
@@ -351,7 +332,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn test_time_emitter_creation() {
-        let time_emitter = WebEmitter::start(Settings::default(), |_, _| {});
+        let time_emitter = WebEmitter::start(Settings::default(), |_, _| {}).unwrap();
         assert_eq!(time_emitter.settings().max_events(), None);
         assert_eq!(time_emitter.settings().interval(), Duration::from_secs(1));
     }
@@ -363,7 +344,7 @@ mod tests {
             .set_interval(Duration::from_millis(100))
             .set_kind(TimeKind::Base10);
 
-        let time_emitter = WebEmitter::start(settings, |_, _| {});
+        let time_emitter = WebEmitter::start(settings, |_, _| {}).unwrap();
         assert_eq!(time_emitter.settings().max_events(), Some(5));
         assert_eq!(
             time_emitter.settings().interval(),
@@ -386,22 +367,21 @@ mod tests {
         let callback_current_time = Arc::clone(&current_time);
         let callback_event_count = Arc::clone(&event_count);
 
-        let mut time_emitter = WebEmitter::start(settings, move |time, _| {
+        let mut emitter = WebEmitter::start(settings, move |time, _| {
             let mut current_count = callback_event_count.lock().unwrap();
             *current_count += 1;
             let mut current_time = callback_current_time.lock().unwrap();
             *current_time = Some(time);
-        });
+        })
+        .unwrap();
 
         // Let it run just long enough for a few events
         TimeoutFuture::new(20).await;
 
         // Stop the emitter after waiting
-        time_emitter
-            .stop()
-            .expect("Should be able to stop the emitter");
+        emitter.stop().expect("Should be able to stop the emitter");
 
-        time_emitter
+        emitter
             .await_completion()
             .expect("Should be able to await completion");
 
@@ -442,7 +422,8 @@ mod tests {
                 let mut current_count = callback_event_count.lock().unwrap();
                 *current_count += 1;
             },
-        );
+        )
+        .unwrap();
 
         // Let it run for a short time - just enough for one event
         TimeoutFuture::new(15).await;
@@ -476,19 +457,18 @@ mod tests {
             .set_max_events(3)
             .set_interval(Duration::from_millis(10));
 
-        let mut time_emitter = WebEmitter::start(settings, move |_, ctx| {
+        let mut emitter = WebEmitter::start(settings, move |_, ctx| {
             let mut expected_index = expected_index.lock().unwrap();
             assert_eq!(ctx.index, *expected_index);
             assert_eq!(ctx.settings.max_events(), Some(3));
             assert_eq!(ctx.settings.interval(), Duration::from_millis(10));
             *expected_index += 1;
-        });
+        })
+        .unwrap();
 
         TimeoutFuture::new(50).await;
 
-        time_emitter
-            .stop()
-            .expect("Should be able to stop the emitter");
+        emitter.stop().expect("Should be able to stop the emitter");
     }
 
     #[wasm_bindgen_test]
@@ -496,7 +476,7 @@ mod tests {
         let event_count = Arc::new(Mutex::new(0));
         let event_count_clone = Arc::clone(&event_count);
 
-        let mut time_emitter = WebEmitter::start(
+        let mut emitter = WebEmitter::start(
             Settings::new()
                 .set_max_events(3)
                 .set_interval(Duration::from_millis(10)),
@@ -504,13 +484,12 @@ mod tests {
                 let mut count = event_count_clone.lock().unwrap();
                 *count += 1;
             },
-        );
+        )
+        .unwrap();
 
         TimeoutFuture::new(50).await;
 
-        time_emitter
-            .stop()
-            .expect("Should be able to stop the emitter");
+        emitter.stop().expect("Should be able to stop the emitter");
 
         assert_eq!(*event_count.lock().unwrap(), 3);
     }

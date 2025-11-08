@@ -1,6 +1,6 @@
-//! 📡 Standard environment implementation of the time interval.
+//! 📡 Standard environment implementation of the emitter.
 //!
-//! This module provides a time interval implementation for standard (non-WebAssembly)
+//! This module provides a emitter implementation for standard (non-WebAssembly)
 //! environments. It uses native threads and synchronization primitives to
 //! implement periodic time event emission.
 //!
@@ -13,10 +13,10 @@
 //! # 📚 Usage Example
 //!
 //! ```rust,no_run
-//! use metric_time::{Emittable, Emitter, EmitterSettings};
+//! use metric_time::{Emitter, EmitterSettings, Startable};
 //! use std::time::Duration;
 //!
-//! // Create time interval with default settings (1 second interval)
+//! // Create emitter with default settings (1 second interval)
 //! let interval = Emitter::start(EmitterSettings::default(), |time, ctx| {
 //!     println!("Time: {}, Event #{}", time, ctx.index);
 //! });
@@ -31,11 +31,12 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crate::{Emittable, EmitterContext, EmitterSettingsTrait, Time, TimeConversionTrait, TimeKind};
+use super::lib::{EmitterContext, EmitterSettingsTrait, Startable, Stoppable};
+use crate::{Time, TimeConversionTrait, TimeKind};
 
 // 📡 Emitter ----------------------------------------------------------------------- /
 
-/// 📡 A time interval implementation for standard environments.
+/// 📡 A emitter implementation for standard environments.
 ///
 /// This struct provides a way to emit time events at regular intervals
 /// using a background thread. It implements the [`TimeEmitterTrait`] trait
@@ -47,7 +48,7 @@ use crate::{Emittable, EmitterContext, EmitterSettingsTrait, Time, TimeConversio
 /// safe sharing between threads. The background thread will continue running
 /// until the interval is stopped or dropped.
 pub struct Emitter {
-    /// The configuration settings for this time interval
+    /// The configuration settings for this emitter
     settings: Settings,
     /// Subscription for communicating with the background thread
     subscription: Subscription,
@@ -89,12 +90,11 @@ impl Debug for Emitter {
     }
 }
 
-impl Emittable for Emitter {
+impl Startable for Emitter {
     type Settings = Settings;
-    type OnStopValue = ();
     type ErrorType = Error;
 
-    /// 🚀 Starts a new time interval with the given settings and callback.
+    /// 🚀 Starts a new emitter with the given settings and callback.
     ///
     /// This method creates a new background thread that will emit time events
     /// at the interval specified in the settings. The callback function will
@@ -102,19 +102,19 @@ impl Emittable for Emitter {
     ///
     /// # 📥 Parameters
     ///
-    /// * `settings` - ⚙️ Configuration for the time interval
+    /// * `settings` - ⚙️ Configuration for the emitter
     /// * `on_emit` - 🔔 Callback function that will be invoked for each time event
     ///
     /// # 📤 Returns
     ///
-    /// A new instance of the time interval
+    /// A new instance of the emitter
     ///
     /// # 🔒 Thread Safety
     /// # Thread Behavior
     ///
     /// This method spawns a background thread that will continue running
     /// until the interval is stopped or dropped.
-    fn start<F>(settings: Self::Settings, on_emit: F) -> Self
+    fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Error>
     where
         F: FnMut(Time, EmitterContext<Self::Settings>) -> () + Send + Sync + 'static,
     {
@@ -189,15 +189,15 @@ impl Emittable for Emitter {
             }
         });
 
-        Self {
+        Ok(Self {
             settings,
             subscription: Subscription::new(tx),
             handle: Some(handle),
             callback,
-        }
+        })
     }
 
-    /// ⚙️ Gets a reference to the settings of the time interval.
+    /// ⚙️ Gets a reference to the settings of the emitter.
     ///
     /// This method provides read access to the settings used to configure this interval.
     ///
@@ -207,8 +207,13 @@ impl Emittable for Emitter {
     fn settings(&self) -> &Self::Settings {
         &self.settings
     }
+}
 
-    /// 🛑 Stops the time interval.
+impl Stoppable for Emitter {
+    type OnStopValue = ();
+    type ErrorType = Error;
+
+    /// 🛑 Stops the emitter.
     ///
     /// This method sends a stop signal to the background thread, which will cause
     /// it to terminate. It does not wait for the thread to join, so the thread may
@@ -224,7 +229,7 @@ impl Emittable for Emitter {
             .map_err(|err| Error::StopError(err))
     }
 
-    /// Waits for the time interval's background thread to complete.
+    /// Waits for the emitter's background thread to complete.
     ///
     /// This is a blocking call that waits for the background thread to terminate.
     /// It should be called after `stop()` to ensure proper cleanup of resources.
@@ -262,20 +267,20 @@ impl Emitter {
 
 /// 📨 Messages that can be sent to the background thread.
 ///
-/// These messages control the behavior of the time interval's background thread.
+/// These messages control the behavior of the emitter's background thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MessageType {
-    /// 🚀 Start the time interval
+    /// 🚀 Start the emitter
     Start,
     /// ⏭️ Continue processing (sent after each event)
     Continue,
-    /// 🛑 Stop the time interval
+    /// 🛑 Stop the emitter
     Unsubscribe,
 }
 
 // Subscription ----------------------------------------------------------------------- /
 
-/// 📬 A subscription for communicating with the time interval's background thread.
+/// 📬 A subscription for communicating with the emitter's background thread.
 ///
 /// This struct provides a way to send messages to the background thread,
 /// particularly to stop it when the interval is no longer needed.
@@ -307,13 +312,13 @@ impl Subscription {
     }
 }
 
-// Define Settings for native time interval
+// Define Settings for native emitter
 // ⚙️ Settings ----------------------------------------------------------------------- /
 
-/// ⚙️ Settings for configuring a standard environment time interval.
+/// ⚙️ Settings for configuring a standard environment emitter.
 ///
 /// This struct implements the [`TimeEmitterSettingsTrait`] trait to provide
-/// configuration options for the time interval, such as the interval between
+/// configuration options for the emitter, such as the interval between
 /// events, the maximum number of events, and the time kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Settings {
@@ -380,7 +385,7 @@ impl Default for Settings {
 /// ❌ An error that can occur when using the Emitter.
 ///
 /// This enum represents the different types of errors that can occur
-/// when working with a time interval in a standard environment.
+/// when working with a emitter in a standard environment.
 #[derive(Debug)]
 pub enum Error {
     /// 🧵 Error that occurred while joining the background thread
@@ -392,8 +397,8 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::JoinError(_err) => write!(f, "Error while joining time interval handle"),
-            Error::StopError(err) => write!(f, "Error stopping time interval: {}", err),
+            Error::JoinError(_err) => write!(f, "Error while joining emitter handle"),
+            Error::StopError(err) => write!(f, "Error stopping emitter: {}", err),
         }
     }
 }
@@ -403,7 +408,7 @@ impl std::error::Error for Error {}
 // 🧪 Tests ----------------------------------------------------------------------- /
 
 #[cfg(test)]
-// 🧪 Tests section for standard time interval
+// 🧪 Tests section for standard emitter
 mod tests {
     use std::time::Duration;
 
@@ -425,34 +430,31 @@ mod tests {
         assert_eq!(cleared_settings.max_events(), None);
     }
 
-    /// 🏗️ Test for creating a time interval with default settings
+    /// 🏗️ Test for creating a emitter with default settings
     #[test]
-    fn test_time_interval_creation() {
-        let time_interval = Emitter::start(Settings::default(), |_, _| {});
-        assert_eq!(time_interval.settings().max_events(), None);
-        assert_eq!(time_interval.settings().interval(), Duration::from_secs(1));
+    fn test_emitter_creation() {
+        let emitter = Emitter::start(Settings::default(), |_, _| {}).unwrap();
+        assert_eq!(emitter.settings().max_events(), None);
+        assert_eq!(emitter.settings().interval(), Duration::from_secs(1));
     }
 
-    /// 🛠️ Test for creating a time interval with custom settings
+    /// 🛠️ Test for creating a emitter with custom settings
     #[test]
-    fn test_time_interval_custom_settings() {
+    fn test_emitter_custom_settings() {
         let settings = Settings::new()
             .set_max_events(5)
             .set_interval(Duration::from_millis(100))
             .set_kind(TimeKind::Base10);
 
-        let time_interval = Emitter::start(settings, |_, _| {});
-        assert_eq!(time_interval.settings().max_events(), Some(5));
-        assert_eq!(
-            time_interval.settings().interval(),
-            Duration::from_millis(100)
-        );
-        assert_eq!(time_interval.settings().kind(), TimeKind::Base10);
+        let emitter = Emitter::start(settings, |_, _| {}).unwrap();
+        assert_eq!(emitter.settings().max_events(), Some(5));
+        assert_eq!(emitter.settings().interval(), Duration::from_millis(100));
+        assert_eq!(emitter.settings().kind(), TimeKind::Base10);
     }
 
-    /// 🔢 Test for interval with maximum event count
+    /// 🔢 Test for emitter with maximum event count
     #[test]
-    fn test_interval_max_events() {
+    fn test_emitter_max_events() {
         let current_time = Arc::new(Mutex::new(None as Option<Time>));
         let event_count = Arc::new(Mutex::new(0 as u64));
         let max_events: u64 = 10;
@@ -465,18 +467,19 @@ mod tests {
         let callback_current_time = Arc::clone(&current_time);
         let callback_event_count = Arc::clone(&event_count);
 
-        let mut time_interval = Emitter::start(settings, move |time, _| {
+        let mut emitter = Emitter::start(settings, move |time, _| {
             let mut current_count = callback_event_count.lock().unwrap();
             *current_count += 1;
             let mut current_time = callback_current_time.lock().unwrap();
             *current_time = Some(time);
-        });
+        })
+        .unwrap();
 
         thread::sleep(Duration::from_millis(20));
-        time_interval.stop().unwrap_or_else(|err| {
+        emitter.stop().unwrap_or_else(|err| {
             println!("{}", err);
         });
-        time_interval.await_completion().unwrap_or_else(|err| {
+        emitter.await_completion().unwrap_or_else(|err| {
             println!("{}", err);
         });
 
@@ -488,29 +491,30 @@ mod tests {
         assert!(*final_count <= max_events);
     }
 
-    /// 🛑 Test for unsubscribing from the time interval
+    /// 🛑 Test for unsubscribing from the emitter
     #[test]
-    fn test_interval_unsubscribe() {
+    fn test_emitter_unsubscribe() {
         let initial_event_count: u64 = 0;
         let event_count = Arc::new(Mutex::new(initial_event_count));
         let callback_event_count = Arc::clone(&event_count);
 
-        let mut time_interval = Emitter::start(
+        let mut emitter = Emitter::start(
             Settings::new().set_interval(Duration::from_millis(50)),
             move |_, _| {
                 let mut current_count = callback_event_count.lock().unwrap();
                 *current_count += 1;
             },
-        );
+        )
+        .unwrap();
 
         // Let it run for a short time
         thread::sleep(Duration::from_millis(20));
 
         // Stop it
-        time_interval.stop().unwrap_or_else(|err| {
+        emitter.stop().unwrap_or_else(|err| {
             println!("{}", err);
         });
-        time_interval.await_completion().unwrap_or_else(|err| {
+        emitter.await_completion().unwrap_or_else(|err| {
             println!("{}", err);
         });
 
@@ -532,20 +536,21 @@ mod tests {
             .set_max_events(3)
             .set_interval(Duration::from_millis(10));
 
-        let mut time_interval = Emitter::start(settings, move |_, ctx| {
+        let mut emitter = Emitter::start(settings, move |_, ctx| {
             let mut expected_index = expected_index.lock().unwrap();
             assert_eq!(ctx.index, *expected_index);
             assert_eq!(ctx.settings.max_events(), Some(3));
             assert_eq!(ctx.settings.interval(), Duration::from_millis(10));
             *expected_index += 1;
-        });
+        })
+        .unwrap();
 
         thread::sleep(Duration::from_millis(50));
 
-        time_interval.stop().unwrap_or_else(|err| {
+        emitter.stop().unwrap_or_else(|err| {
             eprintln!("{}", err);
         });
-        time_interval.await_completion().unwrap_or_else(|err| {
+        emitter.await_completion().unwrap_or_else(|err| {
             eprintln!("{}", err);
         });
     }
@@ -557,7 +562,7 @@ mod tests {
         let event_count = Arc::new(Mutex::new(0));
         let event_count_clone = Arc::clone(&event_count);
 
-        let mut time_interval = Emitter::start(
+        let mut emitter = Emitter::start(
             Settings::new()
                 .set_max_events(3)
                 .set_interval(Duration::from_millis(10)),
@@ -565,15 +570,16 @@ mod tests {
                 let mut count = event_count_clone.lock().unwrap();
                 *count += 1;
             },
-        );
+        )
+        .unwrap();
 
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        time_interval.stop().unwrap_or_else(|err| {
+        emitter.stop().unwrap_or_else(|err| {
             println!("{}", err);
         });
 
-        time_interval.await_completion().unwrap_or_else(|err| {
+        emitter.await_completion().unwrap_or_else(|err| {
             println!("{}", err);
         });
 

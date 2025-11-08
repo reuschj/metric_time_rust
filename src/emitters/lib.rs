@@ -97,55 +97,39 @@ pub struct EmitterContext<S: EmitterSettingsTrait> {
     pub settings: S,
 }
 
-// 📡 Time emitter trait ------------------------------------------------------------------------- /
+// 🏁 Startable trait ------------------------------------------------------------------------- /
 
-/// 📡 A trait that defines the core functionality of a time emitter.
-///
-/// This trait provides a common interface for time emitters across different platforms.
-/// Implementations of this trait are responsible for periodically emitting time events
-/// based on the provided settings and invoking the callback function for each event.
-pub trait Emittable: Debug + Clone {
-    /// ⚙️ The settings type used by this emitter.
+pub trait Startable: Debug + Clone {
     type Settings: EmitterSettingsTrait;
-
-    type OnStopValue;
-
-    /// ❌ The error type returned by this emitter's operations.
     type ErrorType: std::error::Error;
 
-    fn start<F>(settings: Self::Settings, on_emit: F) -> Self
+    fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Self::ErrorType>
     where
         Self: Sized,
         F: FnMut(Time, EmitterContext<Self::Settings>) -> () + Send + Sync + 'static;
 
-    /// ⚙️ Gets a reference to the settings of the time emitter.
     fn settings(&self) -> &Self::Settings;
+}
 
-    /// 🔢 Gets the time kind of the emitter.
-    ///
-    /// This is a convenience method that retrieves the time kind from the emitter's settings.
-    fn kind(&self) -> TimeKind {
-        self.settings().kind()
-    }
+pub trait WebStartable: Debug + Clone {
+    type Settings: EmitterSettingsTrait;
+    type ErrorType: std::error::Error;
 
-    /// 🛑 Stops the time emitter.
-    ///
-    /// This method halts the emission of time events. The exact behavior depends on the
-    /// implementation (e.g., stopping a thread, clearing an interval).
+    fn start<F>(settings: Self::Settings, on_emit: F) -> Result<Self, Self::ErrorType>
+    where
+        Self: Sized,
+        F: FnMut(Time, EmitterContext<Self::Settings>) -> () + 'static;
+
+    fn settings(&self) -> &Self::Settings;
+}
+
+/// 🛑 Stoppable trait --------------------------------------------------------------------------- /
+
+pub trait Stoppable: Debug + Clone {
+    type OnStopValue;
+    type ErrorType: std::error::Error;
+
     fn stop(&mut self) -> Result<Self::OnStopValue, Self::ErrorType>;
-
-    /// ⏳ Waits for the time emitter to complete.
-    ///
-    /// This is a blocking call in standard environments (using thread::join),
-    /// and a no-op in WASM environments (where we don't have threads).
-    ///
-    /// In environments with async support, this method should be called
-    /// after `stop()` to ensure proper cleanup of resources.
-    ///
-    /// # 📤 Returns
-    ///
-    /// A Result indicating success or failure of the waiting operation.
-    /// The default implementation simply returns Ok(()).
     fn await_completion(&mut self) -> Result<Self::OnStopValue, Self::ErrorType>;
 }
 

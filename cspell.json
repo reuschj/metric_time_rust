@@ -8,7 +8,8 @@
     "rlib",
     "bindgen",
     "getrandom",
-    "libc"
+    "libc",
+    "Startable"
   ],
   "userWords": [
     "emittable"
